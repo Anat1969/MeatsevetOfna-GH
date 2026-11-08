@@ -1,0 +1,53 @@
+{
+  "name": "הקפל הנסתר",
+  "insight": "הצבע **הפנימי** נחשף רק בתנועה.",
+  "manifesto": ["אישה לא מסתירה את עצמה, היא בוחרת מתי להיראות.", "הבגד מתרחב ונאסף לפי הנשימה שלה.", "הדר הוא הרגל יומי, לא אירוע."],
+  "haiku": ["בְּתוֹךְ הַקֶּפֶל", "צֶבַע שֶׁאִישׁ לֹא רָאָה", "עַד שֶׁהָלַכְתִּי"],
+  "reading": "הקפל הוא מקום של **בחירה**: הצבע קיים כל הזמן, אבל רק הצעד חושף אותו. הכוח עובר מהמבט אל הלובשת.",
+  "signature": { "name": "גודה בבורדו", "text": "טריז בד כהה בתוך כל חצאית, שנפתח רק כשהאישה **הולכת**." },
+  "principles": [
+    { "title": "גזרה נושמת", "text": "שרוכים וכיווצים שהלובשת **מכווננת בעצמה**, לא לפי מבט חיצוני." },
+    { "title": "משקט לסערה", "text": "בד חלק בכתפיים, ורקמה שהולכת ומצטופפת **לכיוון השוליים**." },
+    { "title": "הדר של חול", "text": "כיסים עמוקים, סנדל שטוח ורקמת יד: **יופי שעובד** כל יום." }
+  ],
+  "palette": [
+    { "hex": "#F3E6D2", "name": "שמנת" },
+    { "hex": "#D8C3A0", "name": "חול" },
+    { "hex": "#B5523B", "name": "טרקוטה" },
+    { "hex": "#2F7F7A", "name": "טורקיז עמוק" },
+    { "hex": "#5E1F24", "name": "בורדו" }
+  ],
+  "set": { "concept": "מסדרון של וילונות", "text": "מסלול אבן ארוך בין שתי שורות של **וילונות פשתן** תלויים. כל וילון נפתח כשהלוק עובר ומגלה בטנה בבורדו.", "place_he": "בית הנסן, ירושלים", "place_en": "Hansen House, Jerusalem" },
+  "looks": [
+    { "n": 1, "name": "מחשבה שנרקמת", "distill": "שמלה שמתחילה **בשקט** בכתפיים ונגמרת בסערה של פרחים בשוליים.",
+      "haiku": ["כְּתֵפַיִם שְׁקֵטוֹת", "וּבַשּׁוּלַיִם פּוֹרַחַת", "מְהוּמָה שֶׁלִּי"],
+      "reading": "הרקמה עולה מלמטה כמו רגש שמתמלא. המילה **שלי** היא העיקר: המהומה אינה פגם, היא חלק ממנה.",
+      "garment": "שמלת מידי מפשתן שמנת, רקמת פייזלי שמצטופפת לשוליים בטרקוטה וטורקיז, גודות בורדו בקפלים, שרוך פשתן במותן.",
+      "model": "אישה כבת 40, יציבה וזקופה, באמצע צעד.", "place_he": "חצר אבן בנחלאות, ירושלים", "place_en": "Nachlaot, Jerusalem",
+      "light": "אור בוקר רך ונמוך, צללים ארוכים", "camera": "גובה עיניים, 50 מ\"מ",
+      "prompt_he": "אישה ישראלית כבת 40, יציבה וזקופה, עומדת בחצר אבן ירושלמית בשכונת נחלאות (Nachlaot, Jerusalem). לובשת שמלת מידי מפשתן בצבע שמנת, חלקה ושקטה בכתפיים, שנעשית בהדרגה צפופה ברקמת פייזלי ופרחים בטרקוטה וטורקיז לכיוון השוליים. בתוך קפלי החצאית גודות בבורדו כהה שנחשפות בצעד. שרוך פשתן במותן, קשור בידה. אור בוקר רך ונמוך על האבן, צללים ארוכים. מצלמה בגובה העיניים, עדשה 50 מ\"מ. Documentary realism, Professional architecture photography, 1:1 --ar 1:1 --style raw --no text, words, writing, frame divisions",
+      "prompt_en": "A grounded Israeli woman around 40 standing in a Jerusalem stone courtyard in Nachlaot, wearing a cream linen midi dress, plain and calm at the shoulders, gradually becoming dense with hand-embroidered paisley and florals in terracotta and deep teal toward the hem, dark burgundy godets hidden inside the skirt pleats revealed mid-step, a linen drawstring at the waist held in her hand, soft low morning light on limestone, long shadows, eye-level 50mm, Documentary realism, Professional architecture photography, 1:1 --ar 1:1 --style raw --no text, words, writing, frame divisions",
+      "motion_en": "She takes one slow step forward, the skirt pleats open to reveal burgundy godets, linen sways, camera holds still at eye level.",
+      "image_url": "", "video_url": "", "video_kind": "" },
+    { "n": 2, "name": "הדר יומי", "distill": "ההדר לא מחכה לחג. הוא בצווארון, **בכיס** ובדרך לשוק.",
+      "haiku": ["צַוָּארוֹן רָקוּם", "בֵּין אַרְגְּזֵי הַתַּבְלִין", "הֲדַר שֶׁל יוֹם חוֹל"],
+      "reading": "יופי שלא מבקש אישור. **יום חול** הוא היפוך מכוון של בגדי חג: הטקס הוא החיים עצמם.",
+      "garment": "שמלת חולצה מכותנה רחוצה בצבע חול, צווארון ושרוולים רקומים ביד, כיסים עמוקים, חגורת בד רכה וקפל פנימי בבורדו.",
+      "model": "אישה כבת 60, שיער כסוף אסוף, הולכת עם סל קש.", "place_he": "שוק לוינסקי, תל אביב-יפו", "place_en": "Levinsky Market, Tel Aviv-Yafo",
+      "light": "אור צהריים מסונן דרך סוככי בד", "camera": "גובה מותן, 35 מ\"מ",
+      "prompt_he": "אישה ישראלית כבת 60, שיער כסוף אסוף, הולכת בשוק לוינסקי בתל אביב-יפו (Levinsky Market, Tel Aviv-Yafo) עם סל קש. לובשת שמלת חולצה מכותנה רחוצה בצבע חול, עם צווארון ושרוולים רקומים ביד בפייזלי טרקוטה וטורקיז, כיסים עמוקים וחגורת בד רכה. סנדלי עור שטוחים. בתנועה נחשף קפל פנימי בבורדו. אור צהריים מסונן דרך סוככי בד, ארגזי תבלינים ברקע. מצלמה בגובה המותן, עדשה 35 מ\"מ. Documentary realism, Professional architecture photography, 1:1 --ar 1:1 --style raw --no text, words, writing, frame divisions",
+      "prompt_en": "An Israeli woman around 60 with silver hair tied back walking through Levinsky Market, Tel Aviv-Yafo, carrying a straw basket, wearing a sand-colored washed cotton shirt dress with hand-embroidered paisley collar and cuffs in terracotta and teal, deep pockets, soft fabric belt, flat leather sandals, a burgundy inner pleat flashing as she moves, midday light filtered through fabric awnings, spice crates in the background, waist-level 35mm, Documentary realism, Professional architecture photography, 1:1 --ar 1:1 --style raw --no text, words, writing, frame divisions",
+      "motion_en": "She walks past the spice crates toward camera, basket swinging, the hidden burgundy pleat flashing with each step, slow tracking shot.",
+      "image_url": "", "video_url": "", "video_kind": "" },
+    { "n": 3, "name": "נשירה", "distill": "שמלה של שכבות שנושרות לאט, ומשאירות את האישה **כפי שהיא**.",
+      "haiku": ["שִׁכְבָה נוֹשֶׁרֶת", "עַל אֶבֶן עִם הַשַּׁחַר", "נֶפֶשׁ בְּלִי שִׂמְלָה"],
+      "reading": "הנשירה היא **שחרור** ולא אובדן. השחר מבטיח את הבוקר: היא תתלבש שוב, מבחירה.",
+      "garment": "שמלת שכבות מאורגנזה ומשי שקופים למחצה, שמנת, ורוד אבק וחול, מעל תחתונית משי בגוון עור. השכבה העליונה מחליקה מהכתף.",
+      "model": "אישה כבת 30, מבט שקט ועצמאי.", "place_he": "בית אבן עתיק בעין כרם, ירושלים", "place_en": "Ein Karem, Jerusalem",
+      "light": "שחר ראשון, אור כחול-זהוב מחלון קשתי", "camera": "גובה עיניים, 85 מ\"מ",
+      "prompt_he": "אישה ישראלית כבת 30 עומדת ליד חלון קשתי בבית אבן עתיק בעין כרם (Ein Karem, Jerusalem) עם שחר ראשון. לובשת שמלת שכבות מאורגנזה ומשי שקופים למחצה, בגווני שמנת, ורוד אבק וחול, מעל תחתונית משי בגוון עור. השכבה העליונה מחליקה מכתף אחת אל הרצפה. על רצפת האבן מונחת שכבה שכבר נשרה. אור כחול-זהוב חודר מהחלון, אבק באוויר. מבט שקט, עצמאי, לא מתנצל. צילום צנוע ומכובד. מצלמה בגובה העיניים, עדשה 85 מ\"מ. Documentary realism, Professional architecture photography, 1:1 --ar 1:1 --style raw --no text, words, writing, frame divisions",
+      "prompt_en": "An Israeli woman around 30 standing by an arched window in an old stone house in Ein Karem, Jerusalem, at first dawn, wearing a layered dress of semi-sheer organza and silk in cream, dusty rose and sand over a skin-tone silk slip, the top layer sliding from one shoulder to the floor, a shed layer already resting on the stone floor, blue-gold light through the window, dust in the air, calm unapologetic gaze, modest and dignified, eye-level 85mm, Documentary realism, Professional architecture photography, 1:1 --ar 1:1 --style raw --no text, words, writing, frame divisions",
+      "motion_en": "The top organza layer slowly slides from her shoulder and drifts to the floor, dust glows in dawn light, she lifts her gaze, static camera.",
+      "image_url": "", "video_url": "", "video_kind": "" }
+  ]
+}
