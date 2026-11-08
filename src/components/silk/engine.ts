@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
-export type SilkOpts = { face: string; lining: string; seed?: number; calm?: number };
+export type SilkOpts = { face: string; lining: string; seed?: number; calm?: number; gloss?: number };
 
 const W = 12, H = 9, SX = 180, SY = 140;
 
@@ -48,6 +48,7 @@ export class Silk {
     this.face = new THREE.MeshPhysicalMaterial({ ...common, side: THREE.FrontSide });
     this.back = new THREE.MeshPhysicalMaterial({ ...common, side: THREE.BackSide });
     this.setColors(o.face, o.lining);
+    this.setGloss(o.gloss ?? 0.6);
     this.group.add(new THREE.Mesh(this.geo, this.face), new THREE.Mesh(this.geo, this.back));
     this.group.rotation.set(-0.35, 0.12, -0.18);
     this.scene.add(this.group);
@@ -59,6 +60,10 @@ export class Silk {
     this.shape(0);
   }
 
+  /** 0 = matte linen, 1 = high satin. */
+  setGloss(g: number) {
+    for (const m of [this.face, this.back]) { m.roughness = 0.62 - 0.42 * g; m.clearcoat = 0.05 + 0.5 * g; m.sheen = 0.5 + 0.5 * g; m.sheenRoughness = 0.55 - 0.35 * g; m.anisotropy = 0.4 + 0.55 * g; }
+  }
   setColors(face: string, lining: string) {
     const f = new THREE.Color(face), l = new THREE.Color(lining);
     this.face.color = f; this.face.sheenColor = f.clone().lerp(new THREE.Color('#ffffff'), 0.55);
@@ -111,13 +116,13 @@ const cache = new Map<string, string>();
 let still: Silk | null = null;
 let queue = Promise.resolve();
 export function silkStill(o: SilkOpts & { size?: number }): Promise<string> {
-  const key = `${o.face}|${o.lining}|${o.seed ?? 0}`;
+  const key = `${o.face}|${o.lining}|${o.seed ?? 0}|${o.gloss ?? 0.6}`;
   const hit = cache.get(key); if (hit) return Promise.resolve(hit);
   const job = queue.then(() => {
     const hit2 = cache.get(key); if (hit2) return hit2;
     try {
       if (!still) { const c = document.createElement('canvas'); still = new Silk(c, o); }
-      still.seed = o.seed ?? 0; still.setColors(o.face, o.lining);
+      still.seed = o.seed ?? 0; still.setColors(o.face, o.lining); still.setGloss(o.gloss ?? 0.6);
       const size = o.size ?? 720; still.resize(size, size);
       still.frame(3 + (o.seed ?? 0) * 7);
       const url = still.renderer.domElement.toDataURL('image/jpeg', 0.9);

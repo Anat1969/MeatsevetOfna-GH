@@ -1,7 +1,7 @@
 /**
  * Turns one still look into a short runway film in the browser: a slow walk-in (push toward the
  * viewer), a light sweep like a passing spot, the hidden-fold colour breathing at the edges, and the
- * look's name and haiku at the end. Recorded with MediaRecorder: MP4 where Chrome supports it, else WebM.
+ * no text (the page carries the words). Recorded with MediaRecorder: MP4 where Chrome supports it, else WebM.
  */
 export type FilmOpts = { image: string; name: string; haiku: string[]; accent: string; seconds?: number; onProgress?: (p: number) => void };
 
@@ -35,21 +35,7 @@ export function drawFrame(ctx: CanvasRenderingContext2D, img: HTMLImageElement, 
   v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, o.accent + 'aa');
   ctx.globalAlpha = 0.35 + 0.25 * Math.sin(t * Math.PI);
   ctx.fillStyle = v; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
-  // title card
-  const tc = Math.max(0, (t - 0.62) / 0.3);
-  if (tc > 0) {
-    ctx.globalAlpha = Math.min(1, tc);
-    const band = ctx.createLinearGradient(0, H * 0.55, 0, H);
-    band.addColorStop(0, 'rgba(0,0,0,0)'); band.addColorStop(1, 'rgba(0,0,0,0.78)');
-    ctx.fillStyle = band; ctx.fillRect(0, H * 0.55, W, H * 0.45);
-    ctx.direction = 'rtl'; ctx.textAlign = 'right'; ctx.fillStyle = '#fff';
-    ctx.font = `500 ${Math.round(W * 0.06)}px "Frank Ruhl Libre", serif`;
-    ctx.fillText(o.name, W * 0.92, H * 0.74);
-    ctx.font = `300 ${Math.round(W * 0.034)}px "Frank Ruhl Libre", serif`;
-    o.haiku.forEach((line, i) => ctx.fillText(line, W * 0.92, H * 0.81 + i * W * 0.046));
-    ctx.fillStyle = o.accent; ctx.fillRect(W * 0.92 - W * 0.08, H * 0.765, W * 0.08, 4);
-    ctx.globalAlpha = 1;
-  }
+  // no text in the film: the page carries the words, so text never sits on text
 }
 
 export async function makeFilm(o: FilmOpts): Promise<{ blob: Blob; ext: string }> {

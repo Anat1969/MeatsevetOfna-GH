@@ -39,11 +39,13 @@ export function Sets() {
           <div className="set-grid">
             {s.entries.filter((e) => !kind || e.kind === kind).map((e) => (
               <article key={e.house + e.venue} className="set-card" style={{ ['--k' as string]: KIND_COLOR[e.kind] }}>
+                {e.image && <img className="set-img" src={e.image} alt={`התפאורה של ${e.house}`} loading="lazy" onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = 'none'; }} />}
                 <span className="kind">{e.kind}</span>
                 <h3>{e.house}</h3>
                 <p className="venue">{e.city_he} <span className="en">{e.city_en}</span>{e.venue !== e.city_en && <> · <span className="en">{e.venue}</span></>}</p>
                 <p><Rich t={e.idea} /></p>
-                <p className="lesson"><b>למסלול שלנו:</b> {e.lesson}</p>
+                <p className="lesson"><span>למסלול שלנו:</span><b>{e.lesson}</b></p>
+                {e.credit && <a className="set-credit" href={e.credit.url} target="_blank" rel="noreferrer">צילום: {e.credit.label}</a>}
               </article>
             ))}
           </div>
@@ -74,7 +76,7 @@ export function Sets() {
           </form>
         </div>
       </section>
-      <p className="fine">התיאורים מסוכמים מכתבות שנבחרו כמקורות, ולא נבדקו מול הודעות המותגים. העיר של Diesel, Khaite ו-Fendi היא שבוע האופנה שבו הם מציגים בדרך כלל, הערכה ולא ציטוט.</p>
+      <p className="fine">התיאורים מסוכמים מכתבות שנבחרו כמקורות, ולא נבדקו מול הודעות המותגים. התמונות הן תמונות השער של הכתבות, והזכויות שמורות לאתרים שבקרדיט.</p>
     </main>
   );
 }

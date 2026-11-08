@@ -3,12 +3,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plate } from '../components/Plate';
 import { SilkLive } from '../components/silk/Silk';
 import { makeFilm } from '../components/VideoMaker';
-import { DRAG_TYPE, droppedUrl, getCollection, listCollections, mediaFn, ownerKey, shrink, studio, uploadMedia } from '../lib/api';
+import { DRAG_TYPE, droppedUrl, getCollection, listCollections, mediaFn, ownerKey, promptBrief, shrink, studio, uploadMedia } from '../lib/api';
 import type { Collection, Look, Media } from '../lib/types';
 import { SHOTS, SOURCE_LABEL, STAGES, accentOf, lead, primary, stageIndex } from '../lib/types';
 import type { Shot } from '../lib/types';
 import { TARGET, syllables } from '../lib/haiku';
-import { Rich, plain } from '../lib/text';
+import { Rich, bare, plain } from '../lib/text';
 import { go } from '../router';
 
 const MJ = 'https://www.midjourney.com/imagine';
@@ -50,7 +50,11 @@ function Intake({ onMade }: { onMade: (c: Collection) => void }) {
   useEffect(() => { if (!busy) return; setStep(0); const t = setInterval(() => setStep((s) => Math.min(THINK.length - 1, s + 1)), 4200); return () => clearInterval(t); }, [busy]);
   const run = async () => {
     setBusy(true); setErr('');
-    try { const r = await studio<{ collection: Collection }>({ action: 'generate', image: img, note }); onMade(r.collection); }
+    try {
+      const r = await studio<{ collection: Collection }>({ action: 'generate', image: img, note });
+      const c = r.collection;
+      onMade(c);
+    }
     catch (e) { setErr((e as Error).message); setBusy(false); }
   };
   return (
@@ -103,13 +107,17 @@ function HaikuLine({ v, j, on, big }: { v: string; j: number; on: (s: string) =>
   const ok = c.n === TARGET[j];
   return (
     <div className="hk-line">
-      <Field label={`שורה ${j + 1} בהייקו`} cls={`hk${big ? ' big' : ''}`} v={v} on={on} />
-      <span className={`syl${ok ? ' ok' : ' off'}`} title={c.exact ? 'ספירה לפי הניקוד, שווא נע בראש מילה נספר' : 'בלי ניקוד: הערכה'}>{c.exact ? '' : '~'}{c.n}/{TARGET[j]}</span>
+      <Field label={`שורה ${j + 1} בהייקו`} cls={`hk${big ? ' big' : ''}`} v={bare(v)} on={on} />
+      <span className={`syl${ok ? ' ok' : ' off'}`} title={c.exact ? 'ספירה לפי הניקוד. שווא בראש מילה נספר.' : 'בלי ניקוד אפשר רק להעריך'}>{ok ? `${c.n} הברות` : `${c.exact ? '' : 'כ-'}${c.n} הברות, צריך ${TARGET[j]}`}</span>
     </div>
   );
 }
 export function HaikuEdit({ h, on, big }: { h: string[]; on: (h: string[]) => void; big?: boolean }) {
-  return <div className="haiku-edit">{[0, 1, 2].map((j) => <HaikuLine key={j} j={j} big={big} v={h[j] ?? ''} on={(v) => { const x = [...h]; x[j] = v; on(x); }} />)}</div>;
+  return (
+    <div className={`haiku-edit${big ? ' big' : ''}`}>
+      {[0, 1, 2].map((j) => <HaikuLine key={j} j={j} big={big} v={h[j] ?? ''} on={(v) => { const x = [...h]; x[j] = v; on(x); }} />)}
+    </div>
+  );
 }
 
 type Up = (f: File | undefined, kind: Media['kind'], stage: Shot | 'film') => void;
@@ -124,8 +132,8 @@ function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft, mo
     e.preventDefault(); setOver(false);
     const inner = e.dataTransfer.getData(DRAG_TYPE);
     if (inner) { const x = JSON.parse(inner) as Media; if (x.look_id === l.id && x.stage === st.id) return; move(x, l.id, st.id); return; }
-    const f = e.dataTransfer.files[0];
-    if (f) { up(f, 'image', st.id); return; }
+    const files = [...e.dataTransfer.files];
+    if (files.length) { for (const f of files) up(f, f.type.startsWith('video') ? 'video' : 'image', f.type.startsWith('video') ? 'film' : st.id); return; }
     const u = droppedUrl(e.dataTransfer);
     if (u) pull(u, st.id); else flash('לא זוהתה תמונה בגרירה.');
   };
@@ -139,7 +147,7 @@ function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft, mo
         {m ? <img src={m.url} alt={`${st.label}: ${plain(l.name)}`} draggable onDragStart={drag(m)} title="אפשר לגרור לשלב אחר או ללוק אחר" /> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>{over ? 'כאן' : 'טרם'}</em></span>}
         {over && <span className="cell-drop" aria-hidden="true">שחררי כאן</span>}
       </button>
-      <input ref={inp} type="file" accept="image/*" hidden onChange={(e) => up(e.target.files?.[0], 'image', st.id)} />
+      <input ref={inp} type="file" accept="image/*" multiple hidden onChange={(e) => { for (const f of [...(e.target.files ?? [])]) up(f, 'image', st.id); e.target.value = ''; }} />
       {all.length > 1 && (
         <div className="cell-tray">{all.map((x) => (
           <span key={x.id} className={x.is_primary ? 'on' : ''}>
@@ -148,9 +156,11 @@ function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft, mo
           </span>
         ))}</div>
       )}
+      {p && <p className="cell-brief">{promptBrief(p.he)}</p>}
       <div className="cell-act">
         {p && <button className="link" onClick={() => copy(p.en, flash, `פרומפט ה${st.label}`)} title={p.en}>פרומפט</button>}
         {p && <button className="link" onClick={() => copy(p.he, flash, `פרומפט ה${st.label} בעברית`)} title={p.he}>בעברית</button>}
+        <button className="link" onClick={() => inp.current?.click()}>עוד תמונה</button>
         {canDraft && <button className="link" disabled={!!busy} onClick={() => draft(st.id)}>טיוטה</button>}
       </div>
     </figure>
@@ -161,6 +171,7 @@ function Lane({ c, l, patch, setMedia, flash, canDraft, move }: { c: Collection;
   const [busy, setBusy] = useState(''); const [pct, setPct] = useState(0); const [open, setOpen] = useState(false);
   const vidIn = useRef<HTMLInputElement>(null);
   const img = primary(l, 'image'), vid = primary(l, 'video');
+  const films = l.media.filter((m) => m.kind === 'video').sort((a, b) => b.created_at.localeCompare(a.created_at));
   const work = async (label: string, f: () => Promise<void>) => { setBusy(label); setPct(0); try { await f(); } catch (e) { flash((e as Error).message); } finally { setBusy(''); } };
   const stageOf = (m: Media) => m.stage ?? (m.kind === 'video' ? 'film' : 'editorial');
   const add = (m: Media) => setMedia((all) => [...all.map((x) => (stageOf(x) === stageOf(m) && m.is_primary ? { ...x, is_primary: false } : x)), m]);
@@ -188,6 +199,7 @@ function Lane({ c, l, patch, setMedia, flash, canDraft, move }: { c: Collection;
       <header className="lane-side">
         <span className="lane-n">{String(l.n).padStart(2, '0')}</span>
         <Field label="שם הלוק" cls="lane-name" v={l.name} on={(v) => patch({ name: v })} />
+        <div className="lane-haiku"><HaikuEdit h={l.haiku} on={(h) => patch({ haiku: h })} big /></div>
         <p className="lane-distill"><Rich t={l.distill} /></p>
         <Stepper l={l} />
         {next && <button className="dot" disabled={!!busy} onClick={next.run}><i aria-hidden="true" />{next.label}</button>}
@@ -196,23 +208,30 @@ function Lane({ c, l, patch, setMedia, flash, canDraft, move }: { c: Collection;
       </header>
       <div className="cells">
         {SHOTS.map((st) => <ShotCell key={st.id} c={c} l={l} st={st} busy={busy} up={up} draft={draft} choose={choose} drop={drop} flash={flash} canDraft={canDraft} move={move} pull={pull} />)}
-        <figure className={`cell cell-film${vid ? ' has' : ''}`}>
-          <figcaption><b>סרטון</b><span>8 שניות מהצילום</span></figcaption>
-          <div className="cell-media">{vid ? <video src={vid.url} poster={img?.url} muted loop autoPlay playsInline /> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>טרם</em></span>}</div>
+        <figure className={`cell cell-film${vid ? ' has' : ''}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); for (const f of [...e.dataTransfer.files]) if (f.type.startsWith('video')) up(f, 'video', 'film'); }}>
+          <figcaption><b>סרטונים</b><span>מהצילום, או העלאה של כמה</span></figcaption>
+          <div className="cell-media">{vid ? <video src={vid.url} poster={img?.url} muted loop autoPlay playsInline controls /> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>טרם</em></span>}</div>
+          {films.length > 1 && (
+            <div className="cell-tray">{films.map((x) => (
+              <span key={x.id} className={x.is_primary ? 'on' : ''}>
+                <button onClick={() => choose(x)} title={`${SOURCE_LABEL[x.source]}${x.is_primary ? ' · מוצג במסלול' : ' · להציג במסלול'}`}><video src={x.url} muted preload="metadata" /></button>
+                <button className="x" onClick={() => drop(x)} aria-label="מחיקה">×</button>
+              </span>
+            ))}</div>
+          )}
           <div className="cell-act">
             <button className="link" disabled={!img || !!busy} onClick={film}>יצירה</button>
             <button className="link" onClick={() => copy(l.motion_en, flash, 'הוראת התנועה')}>תנועה</button>
             <button className="link" onClick={() => vidIn.current?.click()}>העלאה</button>
             {vid && <a className="link" href={vid.url} download>הורדה</a>}
           </div>
-          <input ref={vidIn} type="file" accept="video/*" hidden onChange={(e) => up(e.target.files?.[0], 'video', 'film')} />
+          <input ref={vidIn} type="file" accept="video/*" multiple hidden onChange={(e) => { for (const f of [...(e.target.files ?? [])]) up(f, 'video', 'film'); e.target.value = ''; }} />
         </figure>
       </div>
       <button className="more" onClick={() => setOpen((o) => !o)} aria-expanded={open}>{open ? 'סגירת הטקסטים' : 'הטקסטים של הלוק'}</button>
       <AnimatePresence initial={false}>
         {open && (
           <motion.div className="lane-text" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-            <div><label>הייקו</label><HaikuEdit h={l.haiku} on={(h) => patch({ haiku: h })} /></div>
             <div><label>זיקוק</label><Field label="זיקוק" multi v={l.distill} on={(v) => patch({ distill: v })} />
               <label>פרשנות</label><Field label="פרשנות" multi v={l.reading} on={(v) => patch({ reading: v })} /></div>
             <div><label>בד וגזרה</label><Field label="בד וגזרה" multi v={l.garment.text ?? ''} on={(v) => patch({ garment: { ...l.garment, text: v } })} />
@@ -261,7 +280,7 @@ function Editor({ c, apply, onDelete, canDraft }: { c: Collection; apply: (f: (c
           <Field label="שם הקולקציה" cls="title" v={plain(c.name)} on={(v) => patchC({ name: v })} />
           <p className="spread-ins"><Rich t={c.insight} /></p>
         </div>
-        <div className="spread-haiku">{c.haiku.map((h) => <span key={h}>{h}</span>)}</div>
+        <div className="spread-haiku">{c.haiku.map((h) => <span key={h}>{bare(h)}</span>)}</div>
         <div className="spread-pal">
           {c.palette.map((p, j) => (
             <label key={j} style={{ background: p.hex }} title="שינוי הצבע">

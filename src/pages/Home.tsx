@@ -6,7 +6,7 @@ import { Kinetic } from '../components/Kinetic';
 import { listCollections, seedCollection } from '../lib/api';
 import type { Collection, Look } from '../lib/types';
 import { STAGES, accentOf, lead, stageIndex } from '../lib/types';
-import { Rich, plain } from '../lib/text';
+import { Rich, bare, plain } from '../lib/text';
 import { SEASONS, KIND_COLOR } from '../data/sets2026';
 
 const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
@@ -30,7 +30,7 @@ function Spread({ c, l, flip }: { c: Collection; l: Look; flip: boolean }) {
       </a>
       <motion.div className="sp-text" initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: '-15%' }} transition={{ duration: 1 }}>
         <span className="kicker dark">לוק {String(l.n).padStart(2, '0')} מתוך 03</span>
-        <div className="haiku big">{l.haiku.map((h) => <span key={h}>{h}</span>)}</div>
+        <div className="haiku big">{l.haiku.map((h) => <span key={h}>{bare(h)}</span>)}</div>
         <p className="reading"><Rich t={l.reading} /></p>
         <dl>
           <dt>בד וגזרה</dt><dd>{l.garment.text}</dd>
@@ -86,7 +86,7 @@ export function Home() {
           </motion.div>
         </div>
         <motion.div className="cover-haiku" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.6, duration: 1.2 }}>
-          {hero.haiku.map((h) => <span key={h}>{h}</span>)}
+          {hero.haiku.map((h) => <span key={h}>{bare(h)}</span>)}
         </motion.div>
         <span className="scroll-cue" aria-hidden="true">גלילה לגיליון</span>
       </section>
@@ -128,7 +128,7 @@ export function Home() {
           {news.map((n, i) => (
             <motion.a key={n.house + n.venue} href="#/sets" className={`story${i === 0 ? ' lead' : ''}`} style={{ ['--k' as string]: KIND_COLOR[n.kind] }}
               initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: (i % 3) * 0.1, duration: 0.8 }}>
-              <div className="story-art" aria-hidden="true"><i /><i /><i /></div>
+              <div className="story-art" aria-hidden="true">{n.image ? <img src={n.image} alt="" loading="lazy" /> : <><i /><i /><i /></>}</div>
               <div className="story-text">
                 <span className="kicker">{n.season} · {n.kind}</span>
                 <h3>{n.house}</h3>

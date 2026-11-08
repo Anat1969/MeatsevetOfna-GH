@@ -96,3 +96,14 @@ export function droppedUrl(dt: DataTransfer): string {
   const u = (src || uri || dt.getData('text/plain') || '').trim();
   return /^https:\/\//.test(u) ? u : '';
 }
+
+/** Full niqqud for haiku lines (words unchanged). */
+export async function vocalize(lines: string[]): Promise<string[]> {
+  const r = await fetch(`${SB_URL}/functions/v1/mo-text`, { method: 'POST', headers: { ...H, 'Content-Type': 'application/json', 'x-owner-key': ownerKey.get() }, body: JSON.stringify({ lines }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `שגיאה ${r.status}`);
+  return j.lines as string[];
+}
+export const hasNiqqud = (t: string) => /[\u05B0-\u05BC]/.test(t);
+/** The look-specific part of a stage prompt, before the stage language: what the image is about. */
+export const promptBrief = (he?: string) => (he ? he.split(/\.\s+(?=סקיצת עיצוב|מחקר צורה|צילום אופנה)/)[0].trim() : '');
