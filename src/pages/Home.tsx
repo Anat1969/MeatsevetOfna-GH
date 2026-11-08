@@ -1,71 +1,105 @@
 import { motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
-import { Stage } from '../components/Stage';
-import { Sketch } from '../components/Sketch';
+import { useEffect, useMemo, useState } from 'react';
+import { Theatre, Figure, useWalk } from '../components/Theatre';
+import { Plate } from '../components/Plate';
 import { listCollections, seedCollection } from '../lib/api';
 import type { Collection } from '../lib/types';
+import { STAGES, accentOf, primary, stageIndex } from '../lib/types';
 import { Rich, plain } from '../lib/text';
-
-const STEPS = [
-  { k: '01', t: 'השראה', d: 'תמונה של טקסט, שיר או דימוי. היא נקראת פעם אחת, ולא נשמרת.' },
-  { k: '02', t: 'סטודיו', d: 'שם, תובנה, הייקו, שלושה לוקים, פלטה ותפאורה. כל פרומפט מוכן למידג\'רני.' },
-  { k: '03', t: 'צילום', d: 'התמונה חוזרת מהמידג\'רני לסטודיו, והופכת לסרטון מסלול.' },
-  { k: '04', t: 'מסלול', d: 'התצוגה עצמה: הלוקים יוצאים בין הווילונות, אחד אחרי השני.' },
-];
+import { go } from '../router';
+import { SEASONS } from '../data/sets2026';
 
 export function Home() {
   const [list, setList] = useState<Collection[]>([seedCollection]);
-  const [open, setOpen] = useState(0);
   useEffect(() => { listCollections().then(setList); }, []);
-  useEffect(() => { const t = setInterval(() => setOpen((o) => (o + 1) % 7), 1600); return () => clearInterval(t); }, []);
   const pub = list.filter((c) => c.status === 'published');
   const hero = pub[0] ?? list[0];
+  const [walker, setWalker] = useState(0);
+  useEffect(() => { const t = setInterval(() => setWalker((w) => (w + 1) % 3), 7000); return () => clearInterval(t); }, []);
+  const t = useWalk(walker, 0.95, 0.05, 5.5);
+
+  // production line: how many looks stand at each stage, across all collections
+  const line = useMemo(() => {
+    const looks = list.flatMap((c) => c.looks);
+    return STAGES.map((s, i) => ({ ...s, count: looks.filter((l) => stageIndex(l.stage) === i).length, total: looks.length }));
+  }, [list]);
+  const waiting = line[0].count;
+  const others = hero.looks.filter((_, i) => i !== walker);
+
   return (
     <main className="home">
       <section className="hero">
-        <Stage palette={hero.content.palette} open={open} compact>
-          <div className="hero-copy">
-            <p className="eyebrow">סטודיו ומסלול תצוגה</p>
-            <h1>השראה נכנסת. <em>קולקציה</em> יוצאת למסלול.</h1>
-            <p className="lede">כל קולקציה מתחילה בתמונה אחת, ומקבלת חיים משלה: שם, הייקו, שלושה לוקים, פרומפטים לצילום, סרטון ותצוגה.</p>
-            <div className="cta">
-              <a className="btn dark" href="#/studio">לסטודיו</a>
-              <a className="btn" href={`#/show/${hero.id}`}>לצפייה במסלול</a>
-            </div>
+        <Theatre accent={accentOf(hero)}>
+          {others.map((l, i) => (
+            <Figure key={l.id} t={0.62 + i * 0.12} x={i ? 26 : -26} onClick={() => go(`#/show/${hero.id}/${l.n}`)} label={`לוק ${l.n}: ${plain(l.name)}`}>
+              <Plate c={hero} l={l} video={false} />
+            </Figure>
+          ))}
+          <Figure key={`w${walker}`} t={t} onClick={() => go(`#/show/${hero.id}/${walker + 1}`)} label={`לוק ${walker + 1}`}>
+            <Plate c={hero} l={hero.looks[walker]} />
+          </Figure>
+        </Theatre>
+        <div className="hero-copy">
+          <p className="kicker">מסלול · סטודיו ותצוגה</p>
+          <h1>השראה נכנסת.<br /><em>קולקציה</em> יוצאת למסלול.</h1>
+          <p className="lede">תמונה אחת הופכת לשלושה לוקים, להייקו, לצילום, לסרטון ולתצוגה. היצירה חיה בלי המקור שלה.</p>
+          <div className="cta">
+            <a className="btn light" href={`#/show/${hero.id}`}>לתצוגה: {plain(hero.name)}</a>
+            <a className="btn ghost-light" href="#/studio">לסטודיו</a>
           </div>
-        </Stage>
+        </div>
+        <div className="hero-caption" aria-live="polite">
+          <span className="num">{String(walker + 1).padStart(2, '0')} / 03</span>
+          <b>{plain(hero.looks[walker]?.name)}</b>
+          <span>{hero.looks[walker]?.place_he}</span>
+        </div>
       </section>
 
-      <section className="flow" aria-label="איך זה עובד">
-        {STEPS.map((s, i) => (
-          <motion.div key={s.k} className="step" initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.12 }}>
-            <span className="num">{s.k}</span>
-            <h3>{s.t}</h3>
-            <p>{s.d}</p>
-          </motion.div>
-        ))}
-      </section>
-
-      <section className="program">
+      <section className="index">
         <header className="sec-head">
           <h2>התוכנייה</h2>
-          <p>{pub.length} קולקציות במסלול{list.length > pub.length ? `, ${list.length - pub.length} בסטודיו` : ''}</p>
+          <p><b>{pub.length}</b> במסלול · <b>{list.length - pub.length}</b> בסטודיו</p>
         </header>
-        <div className="prog-grid">
-          {list.map((c) => (
-            <a key={c.id} className="prog" href={c.status === 'published' ? `#/show/${c.id}` : `#/studio/${c.id}`}>
-              <div className="prog-looks">
-                {c.content.looks.map((l) => (l.image_url ? <img key={l.n} src={l.image_url} alt={l.name} loading="lazy" /> : <Sketch key={l.n} c={c.content} n={l.n} />))}
-              </div>
-              <div className="prog-text">
-                <span className="tag">{c.status === 'published' ? 'במסלול' : 'בסטודיו'}</span>
-                <h3>{plain(c.content.name)}</h3>
-                <p><Rich t={c.content.insight} /></p>
-                <div className="swatches">{c.content.palette.map((p) => <i key={p.hex} style={{ background: p.hex }} title={p.name} />)}</div>
-              </div>
-            </a>
+        <ol className="index-list">
+          {list.map((c, i) => (
+            <motion.li key={c.id} initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06 }}>
+              <a href={c.status === 'published' ? `#/show/${c.id}` : `#/studio/${c.id}`} style={{ ['--accent' as string]: accentOf(c) }}>
+                <span className="ix-n">{String(i + 1).padStart(2, '0')}</span>
+                <span className="ix-title"><b>{plain(c.name)}</b><Rich t={c.insight} /></span>
+                <span className="ix-looks">{c.looks.map((l) => <Plate key={l.id} c={c} l={l} video={false} />)}</span>
+                <span className="ix-pal">{c.palette.map((p) => <i key={p.hex} style={{ background: p.hex }} title={p.name} />)}</span>
+                <span className="ix-state">{c.status === 'published' ? 'במסלול' : 'בסטודיו'}</span>
+              </a>
+            </motion.li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="line-sec">
+        <header className="sec-head">
+          <h2>{waiting ? <><mark>{waiting} לוקים</mark> מחכים לצילום.</> : 'כל הלוקים צולמו.'}</h2>
+          <p>קו הייצור: מפרומפט ועד מסלול</p>
+        </header>
+        <div className="line">
+          {line.map((s, i) => (
+            <div key={s.id} className={`line-st${s.count ? ' has' : ''}`}>
+              <span className="num">{String(i + 1).padStart(2, '0')}</span>
+              <b>{s.count}</b>
+              <span>{s.label}</span>
+              <i style={{ width: `${s.total ? (s.count / s.total) * 100 : 0}%` }} />
+            </div>
           ))}
         </div>
+        <p className="line-note">כל לוק עובר ארבע תחנות. התמונה הראשית נבחרת מתוך כמה צילומים, והסרטון נבנה ממנה.</p>
+      </section>
+
+      <section className="teaser">
+        <a href="#/sets">
+          <span className="kicker dark">ארכיון התפאורות</span>
+          <b>ב-2026 התפאורה הפכה לסיפור עצמו.</b>
+          <span>{SEASONS.reduce((n, s) => n + s.entries.length, 0)} תצוגות, ולכל אחת מה לקחת למסלול שלנו</span>
+        </a>
+        {hero.looks.some((l) => primary(l, 'image')) ? null : <p className="fine">הלוקים מוצגים כלוחות בד עד שמגיע צילום. בסטודיו: צילום טיוטה בלחיצה, או צילום ממידג'רני.</p>}
       </section>
     </main>
   );

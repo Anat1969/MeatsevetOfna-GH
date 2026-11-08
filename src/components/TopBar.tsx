@@ -16,7 +16,7 @@ export function TopBar({ route, items, status }: { route: Route; items?: MenuIte
   const ref = useRef<HTMLElement & { items?: MenuItem[]; status?: string }>(null);
   useEffect(() => { if (ref.current) { ref.current.items = items ?? []; ref.current.status = status ?? ''; } }, [items, status]);
   return (
-    <header className="bar">
+    <header className={`bar${route.name === "home" || route.name === "show" ? " dark" : ""}`}>
       <a className="brand" href="#/" onClick={(e) => { e.preventDefault(); go('#/'); }} aria-label="מסלול, לדף הבית">
         <svg viewBox="0 0 64 64" width="26" height="26" aria-hidden="true"><path d="M12 56 L28 10 L36 10 L52 56 Z" fill="currentColor" /><path d="M32 22 L26 56 L38 56 Z" fill="var(--bordo)" /></svg>
         <span>מסלול</span>

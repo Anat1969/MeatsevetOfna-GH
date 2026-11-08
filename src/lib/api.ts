@@ -1,11 +1,25 @@
-import type { Collection, Content, LinkRow } from './types';
+import type { Collection, LinkRow, Media } from './types';
 import seed from '../data/seed.json';
 
 export const SB_URL = 'https://ktqmwpbzcnzkhjskqisy.supabase.co';
 const ANON = 'sb_publishable_IkreG7naPa1h-d4kGp1gpA_sLU4tg5q';
 const H = { apikey: ANON, Authorization: `Bearer ${ANON}` };
 export const SEED_ID = '0f1e2d3c-0000-4000-8000-000000000001';
-export const seedCollection: Collection = { id: SEED_ID, created_at: '2026-11-08', updated_at: '2026-11-08', status: 'published', content: seed as Content };
+const SELECT = 'select=*,looks:mo_looks(*,media:mo_media(*))';
+
+type SeedLook = (typeof seed.looks)[number];
+export const seedCollection: Collection = {
+  id: SEED_ID, created_at: '2026-11-08', updated_at: '2026-11-08', status: 'published',
+  name: seed.name, insight: seed.insight, manifesto: seed.manifesto, haiku: seed.haiku, reading: seed.reading,
+  signature: seed.signature, principles: seed.principles, palette: seed.palette, set_design: seed.set,
+  looks: seed.looks.map((l: SeedLook) => ({
+    id: `seed-${l.n}`, collection_id: SEED_ID, n: l.n, name: l.name, distill: l.distill, haiku: l.haiku, reading: l.reading,
+    garment: { text: l.garment }, model: l.model, place_he: l.place_he, place_en: l.place_en, light: l.light, camera: l.camera,
+    prompt_he: l.prompt_he, prompt_en: l.prompt_en, motion_en: l.motion_en, stage: 'prompt', media: [],
+  })),
+};
+
+const norm = (c: Collection): Collection => ({ ...c, looks: [...(c.looks ?? [])].sort((a, b) => a.n - b.n).map((l) => ({ ...l, media: l.media ?? [] })) });
 
 const KEY = 'maslul.ownerKey';
 export const ownerKey = {
@@ -15,57 +29,44 @@ export const ownerKey = {
 
 export async function listCollections(): Promise<Collection[]> {
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/mo_collections?select=*&order=created_at.desc`, { headers: H });
+    const r = await fetch(`${SB_URL}/rest/v1/mo_collections?${SELECT}&order=created_at.desc`, { headers: H });
     if (!r.ok) throw new Error(String(r.status));
-    const rows = (await r.json()) as Collection[];
+    const rows = ((await r.json()) as Collection[]).filter((c) => c.name).map(norm);
     return rows.length ? rows : [seedCollection];
-  } catch {
-    return [seedCollection];
-  }
+  } catch { return [seedCollection]; }
 }
-
 export async function getCollection(id: string): Promise<Collection | null> {
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/mo_collections?id=eq.${encodeURIComponent(id)}&select=*`, { headers: H });
+    const r = await fetch(`${SB_URL}/rest/v1/mo_collections?id=eq.${encodeURIComponent(id)}&${SELECT}`, { headers: H });
     if (!r.ok) throw new Error(String(r.status));
-    return ((await r.json()) as Collection[])[0] ?? (id === SEED_ID ? seedCollection : null);
-  } catch {
-    return id === SEED_ID ? seedCollection : null;
-  }
+    const c = ((await r.json()) as Collection[])[0];
+    return c ? norm(c) : id === SEED_ID ? seedCollection : null;
+  } catch { return id === SEED_ID ? seedCollection : null; }
 }
-
 export async function listLinks(): Promise<LinkRow[]> {
-  try {
-    const r = await fetch(`${SB_URL}/rest/v1/mo_links?select=*&order=created_at.desc`, { headers: H });
-    return r.ok ? await r.json() : [];
-  } catch { return []; }
+  try { const r = await fetch(`${SB_URL}/rest/v1/mo_links?select=*&order=created_at.desc`, { headers: H }); return r.ok ? await r.json() : []; } catch { return []; }
 }
 
 export async function studio<T = Record<string, unknown>>(body: Record<string, unknown>): Promise<T> {
   const r = await fetch(`${SB_URL}/functions/v1/mo-studio`, {
-    method: 'POST',
-    headers: { ...H, 'Content-Type': 'application/json', 'x-owner-key': ownerKey.get() },
-    body: JSON.stringify(body),
+    method: 'POST', headers: { ...H, 'Content-Type': 'application/json', 'x-owner-key': ownerKey.get() }, body: JSON.stringify(body),
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || `שגיאה ${r.status}`);
   return j as T;
 }
 
-/** Upload a file or blob for a look slot, straight to storage through a signed URL. */
-export async function uploadMedia(id: string, slot: string, file: Blob, ext: string): Promise<string> {
-  const s = await studio<{ signedUrl: string; url: string }>({ action: 'sign', id, slot, ext });
+/** Straight to storage through a signed URL, then registered as media of the look. */
+export async function uploadMedia(lookId: string, kind: Media['kind'], source: 'mj' | 'film' | 'upload', file: Blob, ext: string): Promise<Media> {
+  const s = await studio<{ signedUrl: string; url: string; path: string }>({ action: 'sign', look_id: lookId, ext, source });
   const signed = s.signedUrl.startsWith('http') ? s.signedUrl : `${SB_URL}/storage/v1${s.signedUrl}`;
   const r = await fetch(signed, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'true' }, body: file });
   if (!r.ok) throw new Error(`ההעלאה נכשלה (${r.status})`);
-  return s.url;
+  const m = await studio<{ media: Media }>({ action: 'add_media', look_id: lookId, kind, source, url: s.url, path: s.path });
+  return m.media;
 }
 
-export const fileToDataUrl = (f: Blob) => new Promise<string>((res, rej) => {
-  const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = rej; fr.readAsDataURL(f);
-});
-
-/** Shrink an input image before sending it to the model. */
+export const fileToDataUrl = (f: Blob) => new Promise<string>((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = rej; fr.readAsDataURL(f); });
 export async function shrink(f: File, max = 1600): Promise<string> {
   const url = await fileToDataUrl(f);
   const img = new Image(); img.src = url; await img.decode();
