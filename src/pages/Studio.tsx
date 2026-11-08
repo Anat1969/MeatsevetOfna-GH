@@ -7,7 +7,6 @@ import { DRAG_TYPE, droppedUrl, getCollection, listCollections, mediaFn, ownerKe
 import type { Collection, Look, Media } from '../lib/types';
 import { SHOTS, SOURCE_LABEL, STAGES, accentOf, lead, primary, stageIndex } from '../lib/types';
 import type { Shot } from '../lib/types';
-import { TARGET, syllables } from '../lib/haiku';
 import { Rich, bare, plain } from '../lib/text';
 import { go } from '../router';
 
@@ -101,14 +100,11 @@ function Stepper({ l }: { l: Look }) {
   );
 }
 
-/** One haiku line with its syllable count beside it, like a note in the margin of a sketch. */
+/** One haiku line, edited in place. */
 function HaikuLine({ v, j, on, big }: { v: string; j: number; on: (s: string) => void; big?: boolean }) {
-  const c = syllables(v);
-  const ok = c.n === TARGET[j];
   return (
     <div className="hk-line">
       <Field label={`שורה ${j + 1} בהייקו`} cls={`hk${big ? ' big' : ''}`} v={bare(v)} on={on} />
-      <span className={`syl${ok ? ' ok' : ' off'}`} title={c.exact ? 'ספירה לפי הניקוד. שווא בראש מילה נספר.' : 'בלי ניקוד אפשר רק להעריך'}>{ok ? `${c.n} הברות` : `${c.exact ? '' : 'כ-'}${c.n} הברות, צריך ${TARGET[j]}`}</span>
     </div>
   );
 }

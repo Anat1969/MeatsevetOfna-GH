@@ -94,8 +94,6 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       ok(moves.some((m) => m.action === 'move' && m.stage === 'model'), `גרירה בין שלבים נשלחה לשרת (${JSON.stringify(moves[0] || {})})`);
       ok(await lane.locator('.cell-model .cell-media img').count() === 1 && await lane.locator('.cell-editorial .cell-media img').count() === 0, 'התמונה עברה למשבצת המודל ויצאה מהמגזין');
       console.log('editorial after move:', await lane.locator('.cell-editorial .cell-media img').count(), 'model:', await lane.locator('.cell-model .cell-media img').count()); await page.screenshot({ path: path.join(OUT, 'desk-drag.png') });
-      await page.locator('.more').first().click(); await page.waitForTimeout(600);
-      ok((await page.locator('.syl.ok').count()) >= 3, `מונה הברות לכל שורת הייקו (${await page.locator('.syl').count()})`);
     }
     ok(errs.length === 0, `${tag}: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();

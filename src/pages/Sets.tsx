@@ -45,7 +45,6 @@ export function Sets() {
                 <p className="venue">{e.city_he} <span className="en">{e.city_en}</span>{e.venue !== e.city_en && <> · <span className="en">{e.venue}</span></>}</p>
                 <p><Rich t={e.idea} /></p>
                 <p className="lesson"><span>למסלול שלנו:</span><b>{e.lesson}</b></p>
-                {e.credit && <a className="set-credit" href={e.credit.url} target="_blank" rel="noreferrer">צילום: {e.credit.label}</a>}
               </article>
             ))}
           </div>
@@ -76,7 +75,7 @@ export function Sets() {
           </form>
         </div>
       </section>
-      <p className="fine">התיאורים מסוכמים מכתבות שנבחרו כמקורות, ולא נבדקו מול הודעות המותגים. התמונות הן תמונות השער של הכתבות, והזכויות שמורות לאתרים שבקרדיט.</p>
+      <p className="fine">התיאורים מסוכמים מכתבות שנבחרו כמקורות, ולא נבדקו מול הודעות המותגים.</p>
     </main>
   );
 }
