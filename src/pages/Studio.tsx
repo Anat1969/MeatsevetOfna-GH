@@ -136,11 +136,31 @@ function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft, mo
   const m = lead(l, st.id);
   const all = l.media.filter((x) => (x.stage ?? (x.kind === 'video' ? 'film' : 'editorial')) === st.id);
   const p = l.prompts?.[st.id];
+  // several images in one stage: a small black play mark cycles through them every 4 seconds
+  const [playing, setPlaying] = useState(false);
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (!playing || all.length < 2) return;
+    const t = setInterval(() => setIdx((i) => (i + 1) % all.length), 4000);
+    return () => clearInterval(t);
+  }, [playing, all.length]);
+  useEffect(() => { if (all.length < 2) setPlaying(false); }, [all.length]);
+  const shown = playing && all.length > 1 ? all[idx % all.length] : m;
   return (
     <figure className={`cell cell-${st.id}${m ? ' has' : ''}${over ? ' over' : ''}`} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = e.dataTransfer.types.includes(DRAG_TYPE) ? 'move' : 'copy'; setOver(true); }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
-      <figcaption><b>{st.label}</b><span>{st.note}</span></figcaption>
+      <figcaption>
+        <b>{st.label}
+          {all.length > 1 && (
+            <button className={`play${playing ? ' on' : ''}`} onClick={() => { setIdx(all.findIndex((x) => x.id === m?.id) + 1); setPlaying((x) => !x); }} aria-pressed={playing} title={playing ? 'עצירה' : `החלפה בין ${all.length} התמונות כל 4 שניות`} aria-label={playing ? 'עצירת ההחלפה' : 'החלפת תמונות'}>
+              <i aria-hidden="true" />
+            </button>
+          )}
+          {playing && <small className="play-count">{(idx % all.length) + 1}/{all.length}</small>}
+        </b>
+        <span>{st.note}</span>
+      </figcaption>
       <button className="cell-media" onClick={() => inp.current?.click()} aria-label={`העלאת ${st.label}`}>
-        {m ? <span className={`alive alive-${(l.n - 1) % 3}`} style={{ ['--accent' as string]: accentOf(c) }}><img className="plate" src={m.url} alt={`${st.label}: ${plain(l.name)}`} draggable onDragStart={drag(m)} title="אפשר לגרור לשלב אחר או ללוק אחר" /><span className="alive-light" aria-hidden="true" /><span className="alive-edge" aria-hidden="true" /></span> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>{over ? 'כאן' : 'טרם'}</em></span>}
+        {shown && m ? <span key={shown.id} className={`alive alive-${(l.n - 1) % 3}${playing ? ' swap' : ''}`} style={{ ['--accent' as string]: accentOf(c) }}><img className="plate" src={shown.url} alt={`${st.label}: ${plain(l.name)}`} draggable onDragStart={drag(shown)} title="אפשר לגרור לשלב אחר או ללוק אחר" /><span className="alive-light" aria-hidden="true" /><span className="alive-edge" aria-hidden="true" /></span> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>{over ? 'כאן' : 'טרם'}</em></span>}
         {over && <span className="cell-drop" aria-hidden="true">שחררי כאן</span>}
       </button>
       <input ref={inp} type="file" accept="image/*" multiple hidden onChange={(e) => { for (const f of [...(e.target.files ?? [])]) up(f, 'image', st.id); e.target.value = ''; }} />

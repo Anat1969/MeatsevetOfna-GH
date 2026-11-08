@@ -30,7 +30,7 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
   const look = (l, i) => ({ id: `00000000-0000-4000-8000-00000000010${l.n}`, collection_id: ID, n: l.n, name: l.name, distill: l.distill, haiku: l.haiku, reading: l.reading,
     garment: { text: l.garment }, model: l.model, place_he: l.place_he, place_en: l.place_en, light: l.light, camera: l.camera,
     prompt_he: l.prompt_he, prompt_en: l.prompt_en, motion_en: l.motion_en, stage: i < 2 ? 'editorial' : 'prompt', prompts: stages[l.n],
-    media: i < 2 ? [{ id: `00000000-0000-4000-8000-00000000020${l.n}`, look_id: `00000000-0000-4000-8000-00000000010${l.n}`, kind: 'image', source: i ? 'draft' : 'mj', stage: 'editorial', url: `${S}look${l.n}.png`, is_primary: true, created_at: '2026-11-08T10:00:00Z' }] : [] });
+    media: i < 2 ? [...(i === 1 ? [{ id: '00000000-0000-4000-8000-000000000302', look_id: `00000000-0000-4000-8000-00000000010${l.n}`, kind: 'image', source: 'mj', stage: 'editorial', url: `${S}look3.png`, is_primary: false, created_at: '2026-11-08T09:00:00Z' }] : []), { id: `00000000-0000-4000-8000-00000000020${l.n}`, look_id: `00000000-0000-4000-8000-00000000010${l.n}`, kind: 'image', source: i ? 'draft' : 'mj', stage: 'editorial', url: `${S}look${l.n}.png`, is_primary: true, created_at: '2026-11-08T10:00:00Z' }] : [] });
   const row = { id: ID, created_at: '2026-11-08', updated_at: '2026-11-08', status: 'published', name: seed.name, insight: seed.insight, manifesto: seed.manifesto,
     haiku: seed.haiku, reading: seed.reading, signature: seed.signature, principles: seed.principles, palette: seed.palette, set_design: seed.set, looks: seed.looks.map(look) };
   const uploads = [];
@@ -85,8 +85,18 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       const kind = await page.evaluate(() => [...document.querySelectorAll('.lane video')].map((v) => v.getAttribute('src')).join(' ')); console.log('videos:', kind, await page.locator('.saved').textContent());
       ok(kind.includes('film'), 'הסרטון מוצג בכרטיס הלוק');
       // no frames: no element in the studio draws a box border or a card shadow
-      const framed = await page.evaluate(() => [...document.querySelectorAll('main *')].filter((e) => { const c = getComputedStyle(e); if (e.offsetParent === null || c.opacity === '0' || e.type === 'file' || e.type === 'color') return false; return (parseFloat(c.borderTopWidth) > 0 && c.borderTopStyle !== 'none' && parseFloat(c.borderLeftWidth) > 0) || /rgba\(0, 0, 0, 0\.0[5-9]\).*px \d+px/.test(c.boxShadow); }).map((e) => e.tagName + '.' + e.className).slice(0, 5));
+      const framed = await page.evaluate(() => [...document.querySelectorAll('main *')].filter((e) => { const c = getComputedStyle(e); if (e.offsetParent === null || c.opacity === '0' || e.type === 'file' || e.type === 'color' || e.closest('.play')) return false; return (parseFloat(c.borderTopWidth) > 0 && c.borderTopStyle !== 'none' && parseFloat(c.borderLeftWidth) > 0) || /rgba\(0, 0, 0, 0\.0[5-9]\).*px \d+px/.test(c.boxShadow); }).map((e) => e.tagName + '.' + e.className).slice(0, 5));
       ok(framed.length === 0, `בלי מסגרות בסטודיו ${framed.join(', ')}`);
+      // the play mark cycles the images of a stage every 4 seconds
+      const lane2 = page.locator('.lane').nth(1);
+      const before = await lane2.locator('.cell-editorial .cell-media img').getAttribute('src');
+      await lane2.locator('.cell-editorial .play').click();
+      await page.waitForTimeout(1000);
+      const after = await lane2.locator('.cell-editorial .cell-media img').getAttribute('src');
+      await page.waitForTimeout(4200);
+      const later = await lane2.locator('.cell-editorial .cell-media img').getAttribute('src');
+      ok(before !== after && later === before, `סימן ה-play מחליף תמונות כל 4 שניות (${before?.slice(-9)} ← ${after?.slice(-9)} ← ${later?.slice(-9)})`);
+      await lane2.locator('.cell-editorial .play').click();
       // drag the magazine image of look 1 onto its model cell
       const lane = page.locator('.lane').first();
       await lane.locator('.cell-editorial .cell-media img').dragTo(lane.locator('.cell-model .cell-media'));

@@ -579,3 +579,13 @@ a.dot{text-decoration:none}
 .cell-media .alive .plate{cursor:grab}
 .cell-tray:empty{display:none}
 .cell-brief:empty{min-height:0}
+
+/* play mark: a small black triangle beside the stage name; two bars while it plays */
+.cell figcaption b{display:flex;align-items:center;gap:8px}
+.play{width:18px;height:18px;border:0;padding:0;background:none;cursor:pointer;display:inline-grid;place-items:center}
+.play i{width:0;height:0;border-style:solid;border-width:5px 0 5px 9px;border-color:transparent transparent transparent var(--ink);transition:transform .2s}
+.play:hover i{transform:scale(1.2)}
+.play.on i{width:8px;height:10px;border:0;border-left:3px solid var(--ink);border-right:3px solid var(--ink);transform:none}
+.play-count{font:400 10px var(--mono);color:var(--mute)}
+.alive.swap{animation:swapin .9s ease both}
+@keyframes swapin{from{opacity:0}to{opacity:1}}
