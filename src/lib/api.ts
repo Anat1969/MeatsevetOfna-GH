@@ -77,3 +77,22 @@ export async function shrink(f: File, max = 1600): Promise<string> {
   c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
   return c.toDataURL('image/jpeg', 0.88);
 }
+
+/** Move an image between stages and looks, or bring in an image dragged from another site. */
+export async function mediaFn<T = Record<string, unknown>>(body: Record<string, unknown>): Promise<T> {
+  const r = await fetch(`${SB_URL}/functions/v1/mo-media`, {
+    method: 'POST', headers: { ...H, 'Content-Type': 'application/json', 'x-owner-key': ownerKey.get() }, body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `שגיאה ${r.status}`);
+  return j as T;
+}
+export const DRAG_TYPE = 'application/x-maslul-media';
+/** The image address inside a drop from another tab (uri-list, or an <img> in dragged html). */
+export function droppedUrl(dt: DataTransfer): string {
+  const uri = dt.getData('text/uri-list').split('\n').find((x) => x && !x.startsWith('#'));
+  const html = dt.getData('text/html');
+  const src = html.match(/<img[^>]+src=["']([^"']+)/i)?.[1];
+  const u = (src || uri || dt.getData('text/plain') || '').trim();
+  return /^https:\/\//.test(u) ? u : '';
+}

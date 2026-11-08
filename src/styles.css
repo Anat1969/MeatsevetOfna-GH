@@ -519,3 +519,12 @@ textarea.fld{background:none;box-shadow:inset 0 -1px 0 var(--guide)}
 .cta{gap:32px;align-items:center}
 a.dot{text-decoration:none}
 .in-empty{background:none!important;backdrop-filter:none!important}
+
+/* drag between places: the cell becomes a target, drawn in ink, without a frame */
+.cell-media img[draggable]{cursor:grab}
+.cell-media img[draggable]:active{cursor:grabbing}
+.cell.over .cell-media img{opacity:.35}
+.cell.over .cell-empty i{background:var(--ink)}
+.cell-drop{position:absolute;inset:auto 0 0 0;padding:10px 0;text-align:center;font:400 12px var(--mono);letter-spacing:.06em;color:var(--ink);background:linear-gradient(0deg,rgba(246,244,240,.95),rgba(246,244,240,0))}
+.cell.over figcaption b{text-decoration:underline;text-underline-offset:6px;text-decoration-thickness:1px}
+.cell-tray img[draggable]{cursor:grab}

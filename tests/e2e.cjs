@@ -30,16 +30,23 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
   const look = (l, i) => ({ id: `00000000-0000-4000-8000-00000000010${l.n}`, collection_id: ID, n: l.n, name: l.name, distill: l.distill, haiku: l.haiku, reading: l.reading,
     garment: { text: l.garment }, model: l.model, place_he: l.place_he, place_en: l.place_en, light: l.light, camera: l.camera,
     prompt_he: l.prompt_he, prompt_en: l.prompt_en, motion_en: l.motion_en, stage: i < 2 ? 'editorial' : 'prompt', prompts: stages[l.n],
-    media: i < 2 ? [{ id: `00000000-0000-4000-8000-00000000020${l.n}`, look_id: 'x', kind: 'image', source: i ? 'draft' : 'mj', stage: 'editorial', url: `${S}look${l.n}.png`, is_primary: true, created_at: '2026-11-08T10:00:00Z' }] : [] });
+    media: i < 2 ? [{ id: `00000000-0000-4000-8000-00000000020${l.n}`, look_id: `00000000-0000-4000-8000-00000000010${l.n}`, kind: 'image', source: i ? 'draft' : 'mj', stage: 'editorial', url: `${S}look${l.n}.png`, is_primary: true, created_at: '2026-11-08T10:00:00Z' }] : [] });
   const row = { id: ID, created_at: '2026-11-08', updated_at: '2026-11-08', status: 'published', name: seed.name, insight: seed.insight, manifesto: seed.manifesto,
     haiku: seed.haiku, reading: seed.reading, signature: seed.signature, principles: seed.principles, palette: seed.palette, set_design: seed.set, looks: seed.looks.map(look) };
   const uploads = [];
+  const moves = [];
   async function mock(ctx) {
     await ctx.route('**/appofapp-gh.vercel.app/ai-menu.js', (r) => r.fulfill({ path: path.join(__dirname, 'ai-menu.local.js'), contentType: 'application/javascript' }));
     await ctx.route('**/rest/v1/mo_collections*', (r) => r.fulfill({ json: [row] }));
     await ctx.route('**/rest/v1/mo_links*', (r) => r.fulfill({ json: [] }));
     await ctx.route('**/storage/v1/object/public/mo-media/**', (r) => { const n = Number((r.request().url().match(/look(\d)/) || [0, 1])[1]); r.fulfill({ body: shots[(n - 1) % 3], contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' } }); });
     await ctx.route('**/storage/v1/object/upload/sign/**', (r) => { uploads.push(r.request().postDataBuffer()?.length ?? 0); r.fulfill({ json: { Key: 'x' }, headers: { 'Access-Control-Allow-Origin': '*' } }); });
+    await ctx.route('**/functions/v1/mo-media', async (r) => {
+      const H = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
+      if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 200, headers: H });
+      const b = JSON.parse(r.request().postData() || '{}'); moves.push(b);
+      return r.fulfill({ json: { media: { id: b.media_id, look_id: b.look_id, stage: b.stage, kind: 'image', is_primary: true } }, headers: H });
+    });
     await ctx.route('**/functions/v1/mo-studio', async (r) => {
       const H = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
       if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 200, headers: H });
@@ -80,7 +87,13 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       // no frames: no element in the studio draws a box border or a card shadow
       const framed = await page.evaluate(() => [...document.querySelectorAll('main *')].filter((e) => { const c = getComputedStyle(e); if (e.offsetParent === null || c.opacity === '0' || e.type === 'file' || e.type === 'color') return false; return (parseFloat(c.borderTopWidth) > 0 && c.borderTopStyle !== 'none' && parseFloat(c.borderLeftWidth) > 0) || /rgba\(0, 0, 0, 0\.0[5-9]\).*px \d+px/.test(c.boxShadow); }).map((e) => e.tagName + '.' + e.className).slice(0, 5));
       ok(framed.length === 0, `בלי מסגרות בסטודיו ${framed.join(', ')}`);
-      const syl = await page.locator('.syl').count();
+      // drag the magazine image of look 1 onto its model cell
+      const lane = page.locator('.lane').first();
+      await lane.locator('.cell-editorial .cell-media img').dragTo(lane.locator('.cell-model .cell-media'));
+      await page.waitForTimeout(800);
+      ok(moves.some((m) => m.action === 'move' && m.stage === 'model'), `גרירה בין שלבים נשלחה לשרת (${JSON.stringify(moves[0] || {})})`);
+      ok(await lane.locator('.cell-model .cell-media img').count() === 1 && await lane.locator('.cell-editorial .cell-media img').count() === 0, 'התמונה עברה למשבצת המודל ויצאה מהמגזין');
+      console.log('editorial after move:', await lane.locator('.cell-editorial .cell-media img').count(), 'model:', await lane.locator('.cell-model .cell-media img').count()); await page.screenshot({ path: path.join(OUT, 'desk-drag.png') });
       await page.locator('.more').first().click(); await page.waitForTimeout(600);
       ok((await page.locator('.syl.ok').count()) >= 3, `מונה הברות לכל שורת הייקו (${await page.locator('.syl').count()})`);
     }

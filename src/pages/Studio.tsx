@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plate } from '../components/Plate';
 import { SilkLive } from '../components/silk/Silk';
 import { makeFilm } from '../components/VideoMaker';
-import { getCollection, listCollections, ownerKey, shrink, studio, uploadMedia } from '../lib/api';
+import { DRAG_TYPE, droppedUrl, getCollection, listCollections, mediaFn, ownerKey, shrink, studio, uploadMedia } from '../lib/api';
 import type { Collection, Look, Media } from '../lib/types';
 import { SHOTS, SOURCE_LABEL, STAGES, accentOf, lead, primary, stageIndex } from '../lib/types';
 import type { Shot } from '../lib/types';
@@ -113,23 +113,37 @@ export function HaikuEdit({ h, on, big }: { h: string[]; on: (h: string[]) => vo
 }
 
 type Up = (f: File | undefined, kind: Media['kind'], stage: Shot | 'film') => void;
+type Move = (m: Media, toLook: string, stage: Shot) => void;
+type Pull = (url: string, stage: Shot) => void;
 
-function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft }: { c: Collection; l: Look; st: (typeof SHOTS)[number]; busy: string; up: Up; draft: (s: Shot) => void; choose: (m: Media) => void; drop: (m: Media) => void; flash: Flash; canDraft: boolean }) {
+function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft, move, pull }: { c: Collection; l: Look; st: (typeof SHOTS)[number]; busy: string; up: Up; draft: (s: Shot) => void; choose: (m: Media) => void; drop: (m: Media) => void; flash: Flash; canDraft: boolean; move: Move; pull: Pull }) {
   const inp = useRef<HTMLInputElement>(null);
+  const [over, setOver] = useState(false);
+  const drag = (x: Media) => (e: React.DragEvent) => { e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ ...x, look_id: l.id })); e.dataTransfer.setData('text/uri-list', x.url); e.dataTransfer.effectAllowed = 'copyMove'; };
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setOver(false);
+    const inner = e.dataTransfer.getData(DRAG_TYPE);
+    if (inner) { const x = JSON.parse(inner) as Media; if (x.look_id === l.id && x.stage === st.id) return; move(x, l.id, st.id); return; }
+    const f = e.dataTransfer.files[0];
+    if (f) { up(f, 'image', st.id); return; }
+    const u = droppedUrl(e.dataTransfer);
+    if (u) pull(u, st.id); else flash('לא זוהתה תמונה בגרירה.');
+  };
   const m = lead(l, st.id);
   const all = l.media.filter((x) => (x.stage ?? (x.kind === 'video' ? 'film' : 'editorial')) === st.id);
   const p = l.prompts?.[st.id];
   return (
-    <figure className={`cell cell-${st.id}${m ? ' has' : ''}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); up(e.dataTransfer.files[0], 'image', st.id); }}>
+    <figure className={`cell cell-${st.id}${m ? ' has' : ''}${over ? ' over' : ''}`} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = e.dataTransfer.types.includes(DRAG_TYPE) ? 'move' : 'copy'; setOver(true); }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
       <figcaption><b>{st.label}</b><span>{st.note}</span></figcaption>
       <button className="cell-media" onClick={() => inp.current?.click()} aria-label={`העלאת ${st.label}`}>
-        {m ? <img src={m.url} alt={`${st.label}: ${plain(l.name)}`} /> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>טרם</em></span>}
+        {m ? <img src={m.url} alt={`${st.label}: ${plain(l.name)}`} draggable onDragStart={drag(m)} title="אפשר לגרור לשלב אחר או ללוק אחר" /> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>{over ? 'כאן' : 'טרם'}</em></span>}
+        {over && <span className="cell-drop" aria-hidden="true">שחררי כאן</span>}
       </button>
       <input ref={inp} type="file" accept="image/*" hidden onChange={(e) => up(e.target.files?.[0], 'image', st.id)} />
       {all.length > 1 && (
         <div className="cell-tray">{all.map((x) => (
           <span key={x.id} className={x.is_primary ? 'on' : ''}>
-            <button onClick={() => choose(x)} title={`${SOURCE_LABEL[x.source]}${x.is_primary ? ' · נבחר' : ''}`}><img src={x.url} alt="" /></button>
+            <button onClick={() => choose(x)} title={`${SOURCE_LABEL[x.source]}${x.is_primary ? ' · נבחר' : ''} · גרירה לשלב אחר`}><img src={x.url} alt="" draggable onDragStart={drag(x)} /></button>
             <button className="x" onClick={() => drop(x)} aria-label="מחיקה">×</button>
           </span>
         ))}</div>
@@ -143,7 +157,7 @@ function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft }: 
   );
 }
 
-function Lane({ c, l, patch, setMedia, flash, canDraft }: { c: Collection; l: Look; patch: (p: Partial<Look>) => void; setMedia: (f: (m: Media[]) => Media[]) => void; flash: Flash; canDraft: boolean }) {
+function Lane({ c, l, patch, setMedia, flash, canDraft, move }: { c: Collection; l: Look; patch: (p: Partial<Look>) => void; setMedia: (f: (m: Media[]) => Media[]) => void; flash: Flash; canDraft: boolean; move: Move }) {
   const [busy, setBusy] = useState(''); const [pct, setPct] = useState(0); const [open, setOpen] = useState(false);
   const vidIn = useRef<HTMLInputElement>(null);
   const img = primary(l, 'image'), vid = primary(l, 'video');
@@ -160,6 +174,7 @@ function Lane({ c, l, patch, setMedia, flash, canDraft }: { c: Collection; l: Lo
     const { blob, ext } = await makeFilm({ image: img.url, name: plain(l.name), haiku: l.haiku, accent: accentOf(c), onProgress: setPct });
     const m = await uploadMedia(l.id, 'video', 'film', blob, ext, 'film'); add(m); bump('film'); flash('הסרטון נשמר');
   });
+  const pull: Pull = (url, st) => work('מביא את התמונה', async () => { const r = await mediaFn<{ media: Media }>({ action: 'import_url', look_id: l.id, stage: st, url }); add(r.media); bump(st); flash('התמונה נוספה'); });
   const choose = (m: Media) => work('', async () => { await studio({ action: 'set_primary', media_id: m.id }); setMedia((all) => all.map((x) => (stageOf(x) === stageOf(m) ? { ...x, is_primary: x.id === m.id } : x))); });
   const drop = (m: Media) => work('', async () => { await studio({ action: 'delete_media', media_id: m.id }); setMedia((all) => all.filter((x) => x.id !== m.id)); });
 
@@ -180,7 +195,7 @@ function Lane({ c, l, patch, setMedia, flash, canDraft }: { c: Collection; l: Lo
         {busy && <p className="busy-line">{busy}{pct > 0 && <i style={{ width: `${pct * 100}%` }} />}</p>}
       </header>
       <div className="cells">
-        {SHOTS.map((st) => <ShotCell key={st.id} c={c} l={l} st={st} busy={busy} up={up} draft={draft} choose={choose} drop={drop} flash={flash} canDraft={canDraft} />)}
+        {SHOTS.map((st) => <ShotCell key={st.id} c={c} l={l} st={st} busy={busy} up={up} draft={draft} choose={choose} drop={drop} flash={flash} canDraft={canDraft} move={move} pull={pull} />)}
         <figure className={`cell cell-film${vid ? ' has' : ''}`}>
           <figcaption><b>סרטון</b><span>8 שניות מהצילום</span></figcaption>
           <div className="cell-media">{vid ? <video src={vid.url} poster={img?.url} muted loop autoPlay playsInline /> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>טרם</em></span>}</div>
@@ -216,6 +231,24 @@ function Editor({ c, apply, onDelete, canDraft }: { c: Collection; apply: (f: (c
   const patchC = (p: Partial<Collection>) => { apply((x) => ({ ...x, ...p })); save(() => studio({ action: 'update_collection', id: c.id, patch: p })); };
   const patchL = (l: Look) => (p: Partial<Look>) => { apply((k) => ({ ...k, looks: k.looks.map((x) => (x.id === l.id ? { ...x, ...p } : x)) })); save(() => studio({ action: 'update_look', id: l.id, patch: p })); };
   const setMedia = (l: Look) => (f: (m: Media[]) => Media[]) => apply((k) => ({ ...k, looks: k.looks.map((x) => (x.id === l.id ? { ...x, media: f(x.media) } : x)) }));
+  const stageOfM = (m: Media) => m.stage ?? (m.kind === 'video' ? 'film' : 'editorial');
+  const move: Move = (m, toLook, stage) => {
+    const from = { look: m.look_id, stage: stageOfM(m) };
+    const order = ['prompt', 'sketch', 'model', 'editorial', 'film', 'ready'];
+    apply((k) => ({ ...k, looks: k.looks.map((x) => {
+      let media = x.media;
+      if (x.id === from.look) {
+        media = media.filter((y) => y.id !== m.id);
+        if (m.is_primary) { const next = media.filter((y) => stageOfM(y) === from.stage).sort((a, b) => b.created_at.localeCompare(a.created_at))[0]; if (next) media = media.map((y) => (y.id === next.id ? { ...y, is_primary: true } : y)); }
+      }
+      if (x.id === toLook) {
+        media = [...media.map((y) => (stageOfM(y) === stage ? { ...y, is_primary: false } : y)), { ...m, look_id: toLook, stage, is_primary: true }];
+        return { ...x, media, stage: order.indexOf(x.stage) < order.indexOf(stage) ? stage : x.stage };
+      }
+      return { ...x, media };
+    }) }));
+    save(() => mediaFn({ action: 'move', media_id: m.id, look_id: toLook, stage }));
+  };
   const ready = c.looks.filter((l) => l.stage === 'ready').length;
   const shot = c.looks.filter((l) => lead(l, 'editorial')).length;
   const publish = () => { const s = c.status === 'published' ? 'draft' : 'published'; apply((x) => ({ ...x, status: s })); save(() => studio({ action: 'publish', id: c.id, status: s })); };
@@ -251,7 +284,7 @@ function Editor({ c, apply, onDelete, canDraft }: { c: Collection; apply: (f: (c
       </div>
 
       {tab === 'prod' ? (
-        <div className="lanes">{c.looks.map((l) => <Lane key={l.id} c={c} l={l} patch={patchL(l)} setMedia={setMedia(l)} flash={flash} canDraft={canDraft} />)}</div>
+        <div className="lanes">{c.looks.map((l) => <Lane key={l.id} c={c} l={l} patch={patchL(l)} setMedia={setMedia(l)} flash={flash} canDraft={canDraft} move={move} />)}</div>
       ) : (
         <div className="words">
           <div>
