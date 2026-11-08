@@ -570,3 +570,12 @@ a.dot{text-decoration:none}
 @keyframes edge{to{opacity:.34}}
 .cover-photo .alive{position:absolute;inset:0}
 @media (prefers-reduced-motion:reduce){.alive .plate,.alive-light,.alive-edge{animation:none!important}}
+
+/* studio cells on one grid: caption, image, brief, tray and actions share rows across the lane (subgrid),
+   so the images line up whatever the length of the text */
+.cells{grid-template-rows:auto auto auto auto auto;row-gap:0}
+.cell{display:grid!important;grid-row:span 5;grid-template-rows:subgrid;row-gap:8px}
+.cell-media .alive{position:absolute;inset:0}
+.cell-media .alive .plate{cursor:grab}
+.cell-tray:empty{display:none}
+.cell-brief:empty{min-height:0}

@@ -140,19 +140,17 @@ function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft, mo
     <figure className={`cell cell-${st.id}${m ? ' has' : ''}${over ? ' over' : ''}`} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = e.dataTransfer.types.includes(DRAG_TYPE) ? 'move' : 'copy'; setOver(true); }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
       <figcaption><b>{st.label}</b><span>{st.note}</span></figcaption>
       <button className="cell-media" onClick={() => inp.current?.click()} aria-label={`העלאת ${st.label}`}>
-        {m ? <img src={m.url} alt={`${st.label}: ${plain(l.name)}`} draggable onDragStart={drag(m)} title="אפשר לגרור לשלב אחר או ללוק אחר" /> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>{over ? 'כאן' : 'טרם'}</em></span>}
+        {m ? <span className={`alive alive-${(l.n - 1) % 3}`} style={{ ['--accent' as string]: accentOf(c) }}><img className="plate" src={m.url} alt={`${st.label}: ${plain(l.name)}`} draggable onDragStart={drag(m)} title="אפשר לגרור לשלב אחר או ללוק אחר" /><span className="alive-light" aria-hidden="true" /><span className="alive-edge" aria-hidden="true" /></span> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>{over ? 'כאן' : 'טרם'}</em></span>}
         {over && <span className="cell-drop" aria-hidden="true">שחררי כאן</span>}
       </button>
       <input ref={inp} type="file" accept="image/*" multiple hidden onChange={(e) => { for (const f of [...(e.target.files ?? [])]) up(f, 'image', st.id); e.target.value = ''; }} />
-      {all.length > 1 && (
-        <div className="cell-tray">{all.map((x) => (
+      <p className="cell-brief">{p ? promptBrief(p.he) : ''}</p>
+      <div className="cell-tray">{all.length > 1 && all.map((x) => (
           <span key={x.id} className={x.is_primary ? 'on' : ''}>
             <button onClick={() => choose(x)} title={`${SOURCE_LABEL[x.source]}${x.is_primary ? ' · נבחר' : ''} · גרירה לשלב אחר`}><img src={x.url} alt="" draggable onDragStart={drag(x)} /></button>
             <button className="x" onClick={() => drop(x)} aria-label="מחיקה">×</button>
           </span>
         ))}</div>
-      )}
-      {p && <p className="cell-brief">{promptBrief(p.he)}</p>}
       <div className="cell-act">
         {p && <button className="link" onClick={() => copy(p.en, flash, `פרומפט ה${st.label}`)} title={p.en}>פרומפט</button>}
         {p && <button className="link" onClick={() => copy(p.he, flash, `פרומפט ה${st.label} בעברית`)} title={p.he}>בעברית</button>}
@@ -207,14 +205,13 @@ function Lane({ c, l, patch, setMedia, flash, canDraft, move }: { c: Collection;
         <figure className={`cell cell-film${vid ? ' has' : ''}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); for (const f of [...e.dataTransfer.files]) if (f.type.startsWith('video')) up(f, 'video', 'film'); }}>
           <figcaption><b>סרטונים</b><span>מהצילום, או העלאה של כמה</span></figcaption>
           <div className="cell-media">{vid ? <video src={vid.url} poster={img?.url} muted loop autoPlay playsInline controls /> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>טרם</em></span>}</div>
-          {films.length > 1 && (
-            <div className="cell-tray">{films.map((x) => (
+          <p className="cell-brief">{films.length ? `${films.length} ${films.length === 1 ? 'סרטון' : 'סרטונים'}. הנבחר מוצג במסלול.` : ''}</p>
+          <div className="cell-tray">{films.length > 1 && films.map((x) => (
               <span key={x.id} className={x.is_primary ? 'on' : ''}>
                 <button onClick={() => choose(x)} title={`${SOURCE_LABEL[x.source]}${x.is_primary ? ' · מוצג במסלול' : ' · להציג במסלול'}`}><video src={x.url} muted preload="metadata" /></button>
                 <button className="x" onClick={() => drop(x)} aria-label="מחיקה">×</button>
               </span>
             ))}</div>
-          )}
           <div className="cell-act">
             <button className="link" disabled={!img || !!busy} onClick={film}>יצירה</button>
             <button className="link" onClick={() => copy(l.motion_en, flash, 'הוראת התנועה')}>תנועה</button>
