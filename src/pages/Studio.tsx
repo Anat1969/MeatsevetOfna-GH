@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plate } from '../components/Plate';
+import { SilkLive } from '../components/silk/Silk';
 import { makeFilm } from '../components/VideoMaker';
 import { getCollection, listCollections, ownerKey, shrink, studio, uploadMedia } from '../lib/api';
 import type { Collection, Look, Media } from '../lib/types';
@@ -53,12 +54,12 @@ function Intake({ onMade }: { onMade: (c: Collection) => void }) {
   return (
     <section className={`intake${over ? ' over' : ''}${busy ? ' busy' : ''}`} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); take(e.dataTransfer.files[0]); }}>
       <div className="in-stage">
+        <SilkLive face="#efe7da" lining="#5E1F24" seed={3} className="in-silk" />
         {img ? (
           <div className="in-img"><img src={img} alt="דימוי ההשראה" />{busy && <div className="scan" />}</div>
         ) : (
           <label className="in-empty">
             <input type="file" accept="image/*" onChange={(e) => take(e.target.files?.[0])} hidden />
-            <span className="fold" aria-hidden="true" />
             <b>הניחי כאן את ההשראה</b>
             <span>גרירה, הדבקה (Ctrl+V) או בחירת קובץ</span>
           </label>

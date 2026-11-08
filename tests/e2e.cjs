@@ -56,7 +56,7 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     const page = await ctx.newPage();
     const errs = []; page.on('pageerror', (e) => errs.push(e.message));
     for (const [hash, name] of [['#/', 'home'], [`#/show/${ID}`, 'show'], [`#/show/${ID}/1`, 'show-look'], [`#/show/${ID}/3`, 'show-empty'], [`#/show/${ID}/4`, 'show-finale'], ['#/studio', 'studio'], [`#/studio/${ID}`, 'editor'], ['#/sets', 'sets']]) {
-      await page.goto(B + hash); await page.waitForTimeout(name.startsWith('show') ? 4600 : 1500);
+      await page.goto(B + hash); await page.waitForTimeout(name.startsWith('show') ? 5200 : 3500);
       await page.screenshot({ path: path.join(OUT, `${tag}-${name}.png`) });
       const hs = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       ok(hs <= 1, `${tag} ${name}: בלי גלילה אופקית (${hs})`);
