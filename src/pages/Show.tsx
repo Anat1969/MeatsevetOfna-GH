@@ -16,8 +16,8 @@ function Shot({ c, l, sound }: { c: Collection; l: Look; sound: boolean }) {
   const has = !!(primary(l, 'image') || primary(l, 'video'));
   return (
     <motion.div className="shot" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.8 } }} transition={{ duration: 1 }}>
-      <motion.div className="shot-media" initial={{ scale: 1.14 }} animate={{ scale: 1.0 }} transition={{ duration: DWELL / 1000 + 2, ease: 'linear' }}>
-        {has ? <Plate c={c} l={l} sound={sound} alive /> : <SilkLive {...WHITE} gloss={glossOf(l.n)} seed={l.n} />}
+      <motion.div className="shot-media">
+        {has ? <Plate c={c} l={l} sound={sound} /> : <SilkLive {...WHITE} gloss={glossOf(l.n)} seed={l.n} />}
       </motion.div>
       <motion.div className="wipe" initial={{ x: '0%' }} animate={{ x: '-110%' }} transition={{ duration: 1.1, ease: [0.7, 0, 0.2, 1] }} />
       <div className="shot-shade" />
@@ -87,7 +87,7 @@ export function Show({ id, look }: { id?: string; look?: number }) {
               <div className="tri">
                 {c.looks.map((l, j) => (
                   <motion.figure key={l.id} initial={{ opacity: 0, y: 60 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 + j * 0.25, duration: 1.1, ease: [0.2, 0.8, 0.2, 1] }}>
-                    <Plate c={c} l={l} video={false} />
+                    <Plate c={c} l={l} video={false} alive />
                     <figcaption><b>{String(l.n).padStart(2, '0')}</b>{plain(l.name)}</figcaption>
                   </motion.figure>
                 ))}

@@ -39,7 +39,7 @@ export function Sets() {
           <div className="set-grid">
             {s.entries.filter((e) => !kind || e.kind === kind).map((e) => (
               <article key={e.house + e.venue} className="set-card" style={{ ['--k' as string]: KIND_COLOR[e.kind] }}>
-                {e.image && <img className="set-img" src={e.image} alt={`התפאורה של ${e.house}`} loading="lazy" onError={(ev) => { (ev.currentTarget as HTMLImageElement).style.display = 'none'; }} />}
+                {e.image && <span className={`set-img alive alive-${e.house.length % 3}`}><img className="plate" src={e.image} alt={`התפאורה של ${e.house}`} loading="lazy" onError={(ev) => { (ev.currentTarget.parentElement as HTMLElement).style.display = 'none'; }} /><span className="alive-light" aria-hidden="true" /></span>}
                 <span className="kind">{e.kind}</span>
                 <h3>{e.house}</h3>
                 <p className="venue">{e.city_he} <span className="en">{e.city_en}</span>{e.venue !== e.city_en && <> · <span className="en">{e.venue}</span></>}</p>

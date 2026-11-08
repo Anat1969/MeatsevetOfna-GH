@@ -1,7 +1,7 @@
 export type Shot = 'sketch' | 'model' | 'editorial';
 export type Media = { id: string; look_id: string; kind: 'image' | 'video'; source: 'draft' | 'mj' | 'film' | 'upload'; stage?: Shot | 'film' | null; url: string; path?: string; is_primary: boolean; created_at: string };
 export type Stage = 'prompt' | 'sketch' | 'model' | 'editorial' | 'film' | 'ready';
-export type Prompt = { he: string; en: string };
+export type Prompt = { he: string; en: string; body_he?: string; body_en?: string };
 export type Look = {
   id: string; collection_id: string; n: number; name: string; distill: string; haiku: string[]; reading: string;
   garment: { text?: string }; model: string; place_he: string; place_en: string; light: string; camera: string;

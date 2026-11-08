@@ -128,7 +128,7 @@ export function Home() {
           {news.map((n, i) => (
             <motion.a key={n.house + n.venue} href="#/sets" className={`story${i === 0 ? ' lead' : ''}`} style={{ ['--k' as string]: KIND_COLOR[n.kind] }}
               initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: (i % 3) * 0.1, duration: 0.8 }}>
-              <div className="story-art" aria-hidden="true">{n.image ? <img src={n.image} alt="" loading="lazy" /> : <><i /><i /><i /></>}</div>
+              <div className="story-art" aria-hidden="true">{n.image ? <span className={`alive alive-${n.house.length % 3}`}><img className="plate" src={n.image} alt="" loading="lazy" /><span className="alive-light" aria-hidden="true" /></span> : <><i /><i /><i /></>}</div>
               <div className="story-text">
                 <span className="kicker">{n.season} · {n.kind}</span>
                 <h3>{n.house}</h3>

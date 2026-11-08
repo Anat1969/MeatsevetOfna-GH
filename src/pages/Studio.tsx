@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plate } from '../components/Plate';
 import { SilkLive } from '../components/silk/Silk';
 import { makeFilm } from '../components/VideoMaker';
-import { DRAG_TYPE, droppedUrl, getCollection, listCollections, mediaFn, ownerKey, promptBrief, shrink, studio, uploadMedia } from '../lib/api';
+import { DRAG_TYPE, droppedUrl, getCollection, listCollections, mediaFn, ownerKey, promptBrief, promptFn, shrink, studio, uploadMedia } from '../lib/api';
 import type { Collection, Look, Media } from '../lib/types';
 import { SHOTS, SOURCE_LABEL, STAGES, accentOf, lead, primary, stageIndex } from '../lib/types';
 import type { Shot } from '../lib/types';
@@ -52,6 +52,10 @@ function Intake({ onMade }: { onMade: (c: Collection) => void }) {
     try {
       const r = await studio<{ collection: Collection }>({ action: 'generate', image: img, note });
       const c = r.collection;
+      try {
+        const v = await promptFn<{ prompts: Record<string, Collection['looks'][number]['prompts']> }>({ action: 'vary', look_ids: c.looks.map((l) => l.id) });
+        c.looks = c.looks.map((l) => ({ ...l, prompts: v.prompts[l.id] ?? l.prompts }));
+      } catch { /* the default stage language stays */ }
       onMade(c);
     }
     catch (e) { setErr((e as Error).message); setBusy(false); }
@@ -120,7 +124,7 @@ type Up = (f: File | undefined, kind: Media['kind'], stage: Shot | 'film') => vo
 type Move = (m: Media, toLook: string, stage: Shot) => void;
 type Pull = (url: string, stage: Shot) => void;
 
-function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft, move, pull }: { c: Collection; l: Look; st: (typeof SHOTS)[number]; busy: string; up: Up; draft: (s: Shot) => void; choose: (m: Media) => void; drop: (m: Media) => void; flash: Flash; canDraft: boolean; move: Move; pull: Pull }) {
+function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft, move, pull, reprompt }: { c: Collection; l: Look; st: (typeof SHOTS)[number]; busy: string; up: Up; draft: (s: Shot) => void; choose: (m: Media) => void; drop: (m: Media) => void; flash: Flash; canDraft: boolean; move: Move; pull: Pull; reprompt: (s: Shot) => void }) {
   const inp = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const drag = (x: Media) => (e: React.DragEvent) => { e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ ...x, look_id: l.id })); e.dataTransfer.setData('text/uri-list', x.url); e.dataTransfer.effectAllowed = 'copyMove'; };
@@ -160,11 +164,11 @@ function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft, mo
         <span>{st.note}</span>
       </figcaption>
       <button className="cell-media" onClick={() => inp.current?.click()} aria-label={`העלאת ${st.label}`}>
-        {shown && m ? <span key={shown.id} className={`alive alive-${(l.n - 1) % 3}${playing ? ' swap' : ''}`} style={{ ['--accent' as string]: accentOf(c) }}><img className="plate" src={shown.url} alt={`${st.label}: ${plain(l.name)}`} draggable onDragStart={drag(shown)} title="אפשר לגרור לשלב אחר או ללוק אחר" /><span className="alive-light" aria-hidden="true" /><span className="alive-edge" aria-hidden="true" /></span> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>{over ? 'כאן' : 'טרם'}</em></span>}
+        {shown && m ? <span key={shown.id} className={`${st.id === 'editorial' ? 'alive ' : 'still '}alive-${(l.n - 1) % 3}${playing ? ' swap' : ''}`} style={{ ['--accent' as string]: accentOf(c) }}><img className="plate" src={shown.url} alt={`${st.label}: ${plain(l.name)}`} draggable onDragStart={drag(shown)} title="אפשר לגרור לשלב אחר או ללוק אחר" />{st.id === 'editorial' && <><span className="alive-light" aria-hidden="true" /><span className="alive-edge" aria-hidden="true" /></>}</span> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>{over ? 'כאן' : 'טרם'}</em></span>}
         {over && <span className="cell-drop" aria-hidden="true">שחררי כאן</span>}
       </button>
       <input ref={inp} type="file" accept="image/*" multiple hidden onChange={(e) => { for (const f of [...(e.target.files ?? [])]) up(f, 'image', st.id); e.target.value = ''; }} />
-      <p className="cell-brief">{p ? promptBrief(p.he) : ''}</p>
+      <p className="cell-brief">{p ? promptBrief(p.he, p.body_he) : ''}</p>
       <div className="cell-tray">{all.length > 1 && all.map((x) => (
           <span key={x.id} className={x.is_primary ? 'on' : ''}>
             <button onClick={() => choose(x)} title={`${SOURCE_LABEL[x.source]}${x.is_primary ? ' · נבחר' : ''} · גרירה לשלב אחר`}><img src={x.url} alt="" draggable onDragStart={drag(x)} /></button>
@@ -174,6 +178,7 @@ function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft, mo
       <div className="cell-act">
         {p && <button className="link" onClick={() => copy(p.en, flash, `פרומפט ה${st.label}`)} title={p.en}>פרומפט</button>}
         {p && <button className="link" onClick={() => copy(p.he, flash, `פרומפט ה${st.label} בעברית`)} title={p.he}>בעברית</button>}
+        <button className="link" disabled={!!busy} onClick={() => reprompt(st.id)} title="זווית חדשה על הלוק ושפת שלב אחרת, באותה רמה">פרומפט אחר</button>
         <button className="link" onClick={() => inp.current?.click()}>עוד תמונה</button>
         {canDraft && <button className="link" disabled={!!busy} onClick={() => draft(st.id)}>טיוטה</button>}
       </div>
@@ -186,15 +191,30 @@ function Lane({ c, l, patch, setMedia, flash, canDraft, move }: { c: Collection;
   const vidIn = useRef<HTMLInputElement>(null);
   const img = primary(l, 'image'), vid = primary(l, 'video');
   const films = l.media.filter((m) => m.kind === 'video').sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const work = async (label: string, f: () => Promise<void>) => { setBusy(label); setPct(0); try { await f(); } catch (e) { flash((e as Error).message); } finally { setBusy(''); } };
+  const work = async (label: string, f: () => Promise<void>): Promise<void> => { setBusy(label); setPct(0); try { await f(); } catch (e) { flash((e as Error).message); } finally { setBusy(''); } };
   const stageOf = (m: Media) => m.stage ?? (m.kind === 'video' ? 'film' : 'editorial');
   const add = (m: Media) => setMedia((all) => [...all.map((x) => (stageOf(x) === stageOf(m) && m.is_primary ? { ...x, is_primary: false } : x)), m]);
   const bump = (st: string) => { if (stageIndex(l.stage) < stageIndex(st as Look['stage'])) patch({ stage: st as Look['stage'] }); };
   const draft = (st: Shot) => work(`מצייר טיוטת ${SHOTS.find((x) => x.id === st)!.label}`, async () => { const r = await studio<{ media: Media }>({ action: 'draft', look_id: l.id, stage: st }); add(r.media); bump(st); flash('הטיוטה מוכנה'); });
-  const up: Up = (f, kind, st) => { if (!f) return; work(kind === 'image' ? 'מעלה' : 'מעלה סרטון', async () => {
+  // uploads run one after another: two files at once used to race for the lead and the second was refused
+  const queue = useRef<Promise<void>>(Promise.resolve());
+  const now = useRef(l); now.current = l; // the queued upload reads the look as it is when its turn comes
+  const up: Up = (f, kind, st) => { if (!f) return; queue.current = queue.current.then(() => work(kind === 'image' ? 'מעלה' : 'מעלה סרטון', async () => {
     const ext = (f.name.split('.').pop() || (kind === 'image' ? 'jpg' : 'mp4')).toLowerCase();
-    const m = await uploadMedia(l.id, kind, 'mj', f, ext, st); add(m); bump(kind === 'video' ? 'film' : st); flash('נשמר');
-  }); };
+    const was = kind === 'video' ? lead(now.current, 'film') : undefined;
+    const m = await uploadMedia(l.id, kind, 'mj', f, ext, st);
+    if (was && m.is_primary) {
+      // another film joins as an option; the chosen one stays on the runway
+      await studio({ action: 'set_primary', media_id: was.id });
+      add({ ...m, is_primary: false }); setMedia((all) => all.map((x) => (x.id === was.id ? { ...x, is_primary: true } : x)));
+      flash('הסרטון נוסף כאפשרות');
+    } else { add(m); flash('נשמר'); }
+    bump(kind === 'video' ? 'film' : st);
+  })); };
+  const reprompt = (st: Shot) => work('כותב פרומפט אחר', async () => {
+    const r = await promptFn<{ prompts: Look['prompts'] }>({ action: 'reprompt', look_id: l.id, stage: st, rewrite: true });
+    patch({ prompts: r.prompts }); flash('פרומפט חדש מוכן');
+  });
   const film = () => img && work('מצלם סרטון מסלול', async () => {
     const { blob, ext } = await makeFilm({ image: img.url, name: plain(l.name), haiku: l.haiku, accent: accentOf(c), onProgress: setPct });
     const m = await uploadMedia(l.id, 'video', 'film', blob, ext, 'film'); add(m); bump('film'); flash('הסרטון נשמר');
@@ -221,7 +241,7 @@ function Lane({ c, l, patch, setMedia, flash, canDraft, move }: { c: Collection;
         {busy && <p className="busy-line">{busy}{pct > 0 && <i style={{ width: `${pct * 100}%` }} />}</p>}
       </header>
       <div className="cells">
-        {SHOTS.map((st) => <ShotCell key={st.id} c={c} l={l} st={st} busy={busy} up={up} draft={draft} choose={choose} drop={drop} flash={flash} canDraft={canDraft} move={move} pull={pull} />)}
+        {SHOTS.map((st) => <ShotCell key={st.id} c={c} l={l} st={st} busy={busy} up={up} draft={draft} choose={choose} drop={drop} flash={flash} canDraft={canDraft} move={move} pull={pull} reprompt={reprompt} />)}
         <figure className={`cell cell-film${vid ? ' has' : ''}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); for (const f of [...e.dataTransfer.files]) if (f.type.startsWith('video')) up(f, 'video', 'film'); }}>
           <figcaption><b>סרטונים</b><span>מהצילום, או העלאה של כמה</span></figcaption>
           <div className="cell-media">{vid ? <video src={vid.url} poster={img?.url} muted loop autoPlay playsInline controls /> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>טרם</em></span>}</div>

@@ -106,4 +106,12 @@ export async function vocalize(lines: string[]): Promise<string[]> {
 }
 export const hasNiqqud = (t: string) => /[\u05B0-\u05BC]/.test(t);
 /** The look-specific part of a stage prompt, before the stage language: what the image is about. */
-export const promptBrief = (he?: string) => (he ? he.split(/\.\s+(?=סקיצת עיצוב|מחקר צורה|צילום אופנה)/)[0].trim() : '');
+export const promptBrief = (he?: string, body?: string) => body || (he ? he.split(/\.\s+(?=סקיצת עיצוב|מחקר צורה|צילום אופנה)/)[0].trim() : '');
+
+/** A different prompt for one stage: a new mix of the stage language, and with rewrite a fresh angle on the look itself. */
+export async function promptFn<T = Record<string, unknown>>(body: Record<string, unknown>): Promise<T> {
+  const r = await fetch(`${SB_URL}/functions/v1/mo-prompt`, { method: 'POST', headers: { ...H, 'Content-Type': 'application/json', 'x-owner-key': ownerKey.get() }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `שגיאה ${r.status}`);
+  return j as T;
+}
