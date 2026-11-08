@@ -1,7 +1,7 @@
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SilkLive } from '../components/silk/Silk';
-import { Plate, lookColors } from '../components/Plate';
+import { Alive, Plate, lookColors } from '../components/Plate';
 import { Kinetic } from '../components/Kinetic';
 import { listCollections, seedCollection } from '../lib/api';
 import type { Collection, Look } from '../lib/types';
@@ -20,7 +20,7 @@ function Spread({ c, l, flip }: { c: Collection; l: Look; flip: boolean }) {
   return (
     <section ref={ref} className={`spread-sec${flip ? ' flip' : ''}`} style={{ ['--accent' as string]: accentOf(c) }}>
       <a className="sp-media" href={`#/show/${c.id}/${l.n}`} aria-label={`לוק ${l.n} בתצוגה`}>
-        <motion.div className="sp-img" style={{ y, scale }}><Plate c={c} l={l} /></motion.div>
+        <motion.div className="sp-img" style={{ y, scale }}><Plate c={c} l={l} alive /></motion.div>
         <div className="sp-shade" />
         <motion.div className="sp-on" style={{ y: ty }}>
           <span className="sp-n">{String(l.n).padStart(2, '0')}</span>
@@ -63,7 +63,7 @@ export function Home() {
       <section className="cover" style={{ ['--accent' as string]: accentOf(hero) }}>
         <div className="cover-bg" />
         {coverPhoto
-          ? <motion.img key={coverPhoto} className="cover-photo" src={coverPhoto} alt="" initial={{ opacity: 0, scale: 1.08 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 2.4, ease: 'easeOut' }} />
+          ? <motion.div key={coverPhoto} className="cover-photo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 2.4, ease: 'easeOut' }}><Alive src={coverPhoto} alt="" accent={accentOf(hero)} seed={tone} /></motion.div>
           : <SilkLive face="#f2f0ec" lining={silk.lining} seed={0} className="cover-silk" />}
         <div className="cover-shade" />
         <header className="mast">

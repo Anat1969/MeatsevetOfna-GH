@@ -17,7 +17,7 @@ function Shot({ c, l, sound }: { c: Collection; l: Look; sound: boolean }) {
   return (
     <motion.div className="shot" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.8 } }} transition={{ duration: 1 }}>
       <motion.div className="shot-media" initial={{ scale: 1.14 }} animate={{ scale: 1.0 }} transition={{ duration: DWELL / 1000 + 2, ease: 'linear' }}>
-        {has ? <Plate c={c} l={l} sound={sound} /> : <SilkLive {...WHITE} gloss={glossOf(l.n)} seed={l.n} />}
+        {has ? <Plate c={c} l={l} sound={sound} alive /> : <SilkLive {...WHITE} gloss={glossOf(l.n)} seed={l.n} />}
       </motion.div>
       <motion.div className="wipe" initial={{ x: '0%' }} animate={{ x: '-110%' }} transition={{ duration: 1.1, ease: [0.7, 0, 0.2, 1] }} />
       <div className="shot-shade" />
