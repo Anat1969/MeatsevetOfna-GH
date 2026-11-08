@@ -48,7 +48,6 @@ export function Sets() {
               </article>
             ))}
           </div>
-          <p className="sources">מקורות: {s.sources.map((x, i) => <span key={x.url}>{i > 0 && ' · '}<a href={x.url} target="_blank" rel="noreferrer">{x.label}</a></span>)}</p>
         </section>
       ))}
 
