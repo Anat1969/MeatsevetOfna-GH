@@ -5,7 +5,7 @@ import { Plate, lookColors } from '../components/Plate';
 import { Kinetic } from '../components/Kinetic';
 import { listCollections, seedCollection } from '../lib/api';
 import type { Collection, Look } from '../lib/types';
-import { STAGES, accentOf, stageIndex } from '../lib/types';
+import { STAGES, accentOf, lead, stageIndex } from '../lib/types';
 import { Rich, plain } from '../lib/text';
 import { SEASONS, KIND_COLOR } from '../data/sets2026';
 
@@ -50,6 +50,7 @@ export function Home() {
   const [tone, setTone] = useState(2);
   useEffect(() => { const t = setInterval(() => setTone((x) => (x % 3) + 1), 9000); return () => clearInterval(t); }, []);
   const silk = lookColors(hero, tone);
+  const coverPhoto = lead(hero.looks[tone - 1] ?? hero.looks[0], 'editorial')?.url;
   const d = new Date();
   const line = useMemo(() => {
     const looks = list.flatMap((c) => c.looks);
@@ -60,8 +61,10 @@ export function Home() {
   return (
     <main className="home">
       <section className="cover" style={{ ['--accent' as string]: accentOf(hero) }}>
-        <div className="cover-bg" style={{ background: `radial-gradient(120% 90% at 30% 40%, ${silk.face} 0%, #f3efe8 70%)` }} />
-        <SilkLive face={silk.face} lining={silk.lining} seed={0} className="cover-silk" />
+        <div className="cover-bg" />
+        {coverPhoto
+          ? <motion.img key={coverPhoto} className="cover-photo" src={coverPhoto} alt="" initial={{ opacity: 0, scale: 1.08 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 2.4, ease: 'easeOut' }} />
+          : <SilkLive face="#f2f0ec" lining={silk.lining} seed={0} className="cover-silk" />}
         <div className="cover-shade" />
         <header className="mast">
           <span className="issue">גיליון {String(list.length).padStart(2, '0')} · {MONTHS[d.getMonth()]} {d.getFullYear()}</span>
@@ -78,7 +81,7 @@ export function Home() {
             ))}
           </motion.ol>
           <motion.div className="cta" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.4 }}>
-            <a className="btn dark" href={`#/show/${hero.id}`}>לצפייה בתצוגה</a>
+            <a className="dot" href={`#/show/${hero.id}`}><i aria-hidden="true" />לצפייה בתצוגה</a>
             <a className="btn" href="#/studio">לסטודיו</a>
           </motion.div>
         </div>

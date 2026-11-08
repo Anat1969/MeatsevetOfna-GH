@@ -5,7 +5,9 @@ import { SilkLive } from '../components/silk/Silk';
 import { makeFilm } from '../components/VideoMaker';
 import { getCollection, listCollections, ownerKey, shrink, studio, uploadMedia } from '../lib/api';
 import type { Collection, Look, Media } from '../lib/types';
-import { SOURCE_LABEL, STAGES, accentOf, primary, stageIndex } from '../lib/types';
+import { SHOTS, SOURCE_LABEL, STAGES, accentOf, lead, primary, stageIndex } from '../lib/types';
+import type { Shot } from '../lib/types';
+import { TARGET, syllables } from '../lib/haiku';
 import { Rich, plain } from '../lib/text';
 import { go } from '../router';
 
@@ -33,7 +35,7 @@ function Gate({ onOk }: { onOk: () => void }) {
       <label className="pw"><input type={show ? 'text' : 'password'} autoComplete="current-password" name="password" value={k} onChange={(e) => setK(e.target.value)} placeholder="סיסמת העורכת" />
         <button type="button" onClick={() => setShow((s) => !s)}>{show ? 'הסתרה' : 'הצגה'}</button></label>
       {err && <p className="err">{err}</p>}
-      <button className="btn dark" type="submit">כניסה לאטלייה</button>
+      <button className="dot" type="submit"><i aria-hidden="true" />כניסה לאטלייה</button>
     </form>
   );
 }
@@ -54,7 +56,7 @@ function Intake({ onMade }: { onMade: (c: Collection) => void }) {
   return (
     <section className={`intake${over ? ' over' : ''}${busy ? ' busy' : ''}`} onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={(e) => { e.preventDefault(); setOver(false); take(e.dataTransfer.files[0]); }}>
       <div className="in-stage">
-        <SilkLive face="#efe7da" lining="#5E1F24" seed={3} className="in-silk" />
+        <SilkLive face="#f2f0ec" lining="#141312" seed={3} className="in-silk" />
         {img ? (
           <div className="in-img"><img src={img} alt="דימוי ההשראה" />{busy && <div className="scan" />}</div>
         ) : (
@@ -71,7 +73,7 @@ function Intake({ onMade }: { onMade: (c: Collection) => void }) {
         <p className="muted">הדימוי נקרא פעם אחת ולא נשמר. השמות, ההייקו והפרשנות לא ירמזו עליו.</p>
         <Field label="כיוון אישי" multi rows={3} v={note} on={setNote} />
         <span className="hint">כיוון אישי, לא חובה: עונה, בד, למי, תחושה.</span>
-        {!busy && <button className="btn dark big" disabled={!img} onClick={run}>צור קולקציה</button>}
+        {!busy && <button className="dot big" disabled={!img} onClick={run}><i aria-hidden="true" />צור קולקציה</button>}
         {busy && (
           <ol className="think" aria-live="polite">
             {THINK.map((t, j) => <li key={t} className={j < step ? 'done' : j === step ? 'now' : ''}>{t}</li>)}
@@ -84,98 +86,122 @@ function Intake({ onMade }: { onMade: (c: Collection) => void }) {
   );
 }
 
+/** What exists, not what was reached: each stage is full when its image or film is there. */
 function Stepper({ l }: { l: Look }) {
-  const at = stageIndex(l.stage);
+  const done = (id: string) => (id === 'ready' ? l.stage === 'ready' : id === 'film' ? !!lead(l, 'film') : !!lead(l, id as Shot));
+  const first = STAGES.slice(1).find((s) => !done(s.id))?.id;
   return (
-    <ol className="stepper" aria-label="שלב הייצור">
-      {STAGES.map((s, j) => <li key={s.id} className={j < at ? 'done' : j === at ? 'now' : ''}><i />{s.label}</li>)}
+    <ol className="stepper" aria-label="שלבי ההמחשה">
+      {STAGES.slice(1).map((s) => <li key={s.id} className={done(s.id) ? 'done' : s.id === first ? 'now' : ''}><i />{s.label}</li>)}
     </ol>
+  );
+}
+
+/** One haiku line with its syllable count beside it, like a note in the margin of a sketch. */
+function HaikuLine({ v, j, on, big }: { v: string; j: number; on: (s: string) => void; big?: boolean }) {
+  const c = syllables(v);
+  const ok = c.n === TARGET[j];
+  return (
+    <div className="hk-line">
+      <Field label={`שורה ${j + 1} בהייקו`} cls={`hk${big ? ' big' : ''}`} v={v} on={on} />
+      <span className={`syl${ok ? ' ok' : ' off'}`} title={c.exact ? 'ספירה לפי הניקוד, שווא נע בראש מילה נספר' : 'בלי ניקוד: הערכה'}>{c.exact ? '' : '~'}{c.n}/{TARGET[j]}</span>
+    </div>
+  );
+}
+export function HaikuEdit({ h, on, big }: { h: string[]; on: (h: string[]) => void; big?: boolean }) {
+  return <div className="haiku-edit">{[0, 1, 2].map((j) => <HaikuLine key={j} j={j} big={big} v={h[j] ?? ''} on={(v) => { const x = [...h]; x[j] = v; on(x); }} />)}</div>;
+}
+
+type Up = (f: File | undefined, kind: Media['kind'], stage: Shot | 'film') => void;
+
+function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft }: { c: Collection; l: Look; st: (typeof SHOTS)[number]; busy: string; up: Up; draft: (s: Shot) => void; choose: (m: Media) => void; drop: (m: Media) => void; flash: Flash; canDraft: boolean }) {
+  const inp = useRef<HTMLInputElement>(null);
+  const m = lead(l, st.id);
+  const all = l.media.filter((x) => (x.stage ?? (x.kind === 'video' ? 'film' : 'editorial')) === st.id);
+  const p = l.prompts?.[st.id];
+  return (
+    <figure className={`cell cell-${st.id}${m ? ' has' : ''}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); up(e.dataTransfer.files[0], 'image', st.id); }}>
+      <figcaption><b>{st.label}</b><span>{st.note}</span></figcaption>
+      <button className="cell-media" onClick={() => inp.current?.click()} aria-label={`העלאת ${st.label}`}>
+        {m ? <img src={m.url} alt={`${st.label}: ${plain(l.name)}`} /> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>טרם</em></span>}
+      </button>
+      <input ref={inp} type="file" accept="image/*" hidden onChange={(e) => up(e.target.files?.[0], 'image', st.id)} />
+      {all.length > 1 && (
+        <div className="cell-tray">{all.map((x) => (
+          <span key={x.id} className={x.is_primary ? 'on' : ''}>
+            <button onClick={() => choose(x)} title={`${SOURCE_LABEL[x.source]}${x.is_primary ? ' · נבחר' : ''}`}><img src={x.url} alt="" /></button>
+            <button className="x" onClick={() => drop(x)} aria-label="מחיקה">×</button>
+          </span>
+        ))}</div>
+      )}
+      <div className="cell-act">
+        {p && <button className="link" onClick={() => copy(p.en, flash, `פרומפט ה${st.label}`)} title={p.en}>פרומפט</button>}
+        {p && <button className="link" onClick={() => copy(p.he, flash, `פרומפט ה${st.label} בעברית`)} title={p.he}>בעברית</button>}
+        {canDraft && <button className="link" disabled={!!busy} onClick={() => draft(st.id)}>טיוטה</button>}
+      </div>
+    </figure>
   );
 }
 
 function Lane({ c, l, patch, setMedia, flash, canDraft }: { c: Collection; l: Look; patch: (p: Partial<Look>) => void; setMedia: (f: (m: Media[]) => Media[]) => void; flash: Flash; canDraft: boolean }) {
   const [busy, setBusy] = useState(''); const [pct, setPct] = useState(0); const [open, setOpen] = useState(false);
-  const imgIn = useRef<HTMLInputElement>(null); const vidIn = useRef<HTMLInputElement>(null);
+  const vidIn = useRef<HTMLInputElement>(null);
   const img = primary(l, 'image'), vid = primary(l, 'video');
   const work = async (label: string, f: () => Promise<void>) => { setBusy(label); setPct(0); try { await f(); } catch (e) { flash((e as Error).message); } finally { setBusy(''); } };
-  const lead = (m: Media) => setMedia((all) => [...all.map((x) => (x.kind === m.kind && m.is_primary ? { ...x, is_primary: false } : x)), m]);
-  const draft = () => work('מצלם טיוטה, כחצי דקה', async () => { const r = await studio<{ media: Media }>({ action: 'draft', look_id: l.id }); lead(r.media); if (l.stage === 'prompt') patch({ stage: 'shot' }); flash('צילום הטיוטה מוכן'); });
-  const up = (f: File | undefined, kind: Media['kind']) => f && work(kind === 'image' ? 'מעלה צילום' : 'מעלה סרטון', async () => {
+  const stageOf = (m: Media) => m.stage ?? (m.kind === 'video' ? 'film' : 'editorial');
+  const add = (m: Media) => setMedia((all) => [...all.map((x) => (stageOf(x) === stageOf(m) && m.is_primary ? { ...x, is_primary: false } : x)), m]);
+  const bump = (st: string) => { if (stageIndex(l.stage) < stageIndex(st as Look['stage'])) patch({ stage: st as Look['stage'] }); };
+  const draft = (st: Shot) => work(`מצייר טיוטת ${SHOTS.find((x) => x.id === st)!.label}`, async () => { const r = await studio<{ media: Media }>({ action: 'draft', look_id: l.id, stage: st }); add(r.media); bump(st); flash('הטיוטה מוכנה'); });
+  const up: Up = (f, kind, st) => { if (!f) return; work(kind === 'image' ? 'מעלה' : 'מעלה סרטון', async () => {
     const ext = (f.name.split('.').pop() || (kind === 'image' ? 'jpg' : 'mp4')).toLowerCase();
-    const m = await uploadMedia(l.id, kind, 'mj', f, ext); lead(m);
-    patch({ stage: kind === 'video' ? 'film' : l.stage === 'prompt' ? 'shot' : l.stage }); flash('נשמר');
-  });
+    const m = await uploadMedia(l.id, kind, 'mj', f, ext, st); add(m); bump(kind === 'video' ? 'film' : st); flash('נשמר');
+  }); };
   const film = () => img && work('מצלם סרטון מסלול', async () => {
     const { blob, ext } = await makeFilm({ image: img.url, name: plain(l.name), haiku: l.haiku, accent: accentOf(c), onProgress: setPct });
-    const m = await uploadMedia(l.id, 'video', 'film', blob, ext); lead(m);
-    if (stageIndex(l.stage) < 2) patch({ stage: 'film' }); flash('הסרטון נשמר');
+    const m = await uploadMedia(l.id, 'video', 'film', blob, ext, 'film'); add(m); bump('film'); flash('הסרטון נשמר');
   });
-  const choose = (m: Media) => work('', async () => { await studio({ action: 'set_primary', media_id: m.id }); setMedia((all) => all.map((x) => (x.kind === m.kind ? { ...x, is_primary: x.id === m.id } : x))); });
+  const choose = (m: Media) => work('', async () => { await studio({ action: 'set_primary', media_id: m.id }); setMedia((all) => all.map((x) => (stageOf(x) === stageOf(m) ? { ...x, is_primary: x.id === m.id } : x))); });
   const drop = (m: Media) => work('', async () => { await studio({ action: 'delete_media', media_id: m.id }); setMedia((all) => all.filter((x) => x.id !== m.id)); });
 
-  // the one next action, by stage
-  const next = !img
-    ? (canDraft ? { label: 'צילום טיוטה', run: draft } : { label: 'העלאת צילום', run: () => imgIn.current?.click() })
+  const missing = SHOTS.find((s) => !lead(l, s.id));
+  const next = missing ? { label: `${missing.label}: העתקת הפרומפט`, run: () => l.prompts?.[missing.id] && copy(l.prompts[missing.id]!.en, flash, `פרומפט ה${missing.label}`) }
     : !vid ? { label: 'סרטון מסלול מהצילום', run: film }
-    : l.stage !== 'ready' ? { label: 'אישור למסלול', run: () => patch({ stage: 'ready' }) }
-    : null;
+    : l.stage !== 'ready' ? { label: 'אישור למסלול', run: () => patch({ stage: 'ready' }) } : null;
 
   return (
-    <article className={`lane st-${l.stage}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) up(f, f.type.startsWith('video') ? 'video' : 'image'); }}>
-      <header className="lane-head">
+    <article className={`lane st-${l.stage}`}>
+      <header className="lane-side">
         <span className="lane-n">{String(l.n).padStart(2, '0')}</span>
         <Field label="שם הלוק" cls="lane-name" v={l.name} on={(v) => patch({ name: v })} />
+        <p className="lane-distill"><Rich t={l.distill} /></p>
+        <Stepper l={l} />
+        {next && <button className="dot" disabled={!!busy} onClick={next.run}><i aria-hidden="true" />{next.label}</button>}
+        {l.stage === 'ready' && <p className="ready">מוכן למסלול.</p>}
+        {busy && <p className="busy-line">{busy}{pct > 0 && <i style={{ width: `${pct * 100}%` }} />}</p>}
       </header>
-      <div className="lane-media">
-        <Plate c={c} l={l} />
-        {busy && <div className="busy"><span>{busy}</span>{pct > 0 && <i style={{ width: `${pct * 100}%` }} />}</div>}
+      <div className="cells">
+        {SHOTS.map((st) => <ShotCell key={st.id} c={c} l={l} st={st} busy={busy} up={up} draft={draft} choose={choose} drop={drop} flash={flash} canDraft={canDraft} />)}
+        <figure className={`cell cell-film${vid ? ' has' : ''}`}>
+          <figcaption><b>סרטון</b><span>8 שניות מהצילום</span></figcaption>
+          <div className="cell-media">{vid ? <video src={vid.url} poster={img?.url} muted loop autoPlay playsInline /> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>טרם</em></span>}</div>
+          <div className="cell-act">
+            <button className="link" disabled={!img || !!busy} onClick={film}>יצירה</button>
+            <button className="link" onClick={() => copy(l.motion_en, flash, 'הוראת התנועה')}>תנועה</button>
+            <button className="link" onClick={() => vidIn.current?.click()}>העלאה</button>
+            {vid && <a className="link" href={vid.url} download>הורדה</a>}
+          </div>
+          <input ref={vidIn} type="file" accept="video/*" hidden onChange={(e) => up(e.target.files?.[0], 'video', 'film')} />
+        </figure>
       </div>
-      <Stepper l={l} />
-      {next && <button className="btn dark wide" disabled={!!busy} onClick={next.run}>{next.label}</button>}
-      {l.stage === 'ready' && <p className="ready">מוכן למסלול.</p>}
-
-      {l.media.length > 0 && (
-        <div className="tray" aria-label="צילומים וסרטונים">
-          {[...l.media].sort((a, b) => b.created_at.localeCompare(a.created_at)).map((m) => (
-            <figure key={m.id} className={m.is_primary ? 'on' : ''}>
-              <button className="tray-pick" onClick={() => choose(m)} title={m.is_primary ? 'ראשי' : 'בחירה כראשי'}>
-                {m.kind === 'video' ? <video src={m.url} muted playsInline preload="metadata" /> : <img src={m.url} alt="" loading="lazy" />}
-              </button>
-              <figcaption>{SOURCE_LABEL[m.source]}{m.is_primary ? ' · ראשי' : ''}</figcaption>
-              <button className="tray-x" onClick={() => drop(m)} aria-label="מחיקה">×</button>
-            </figure>
-          ))}
-        </div>
-      )}
-
-      <div className="bridge">
-        <span className="kicker dark">גשר למידג'רני</span>
-        <div className="row">
-          <button className="btn sm" onClick={() => copy(l.prompt_en, flash, 'הפרומפט באנגלית')}>פרומפט באנגלית</button>
-          <button className="btn sm" onClick={() => copy(l.prompt_he, flash, 'הפרומפט בעברית')}>בעברית</button>
-          <a className="btn sm" href={MJ} target="_blank" rel="noreferrer">פתיחת מידג'רני</a>
-        </div>
-        <div className="row">
-          <button className="btn sm" onClick={() => imgIn.current?.click()}>העלאת צילום</button>
-          <button className="btn sm" onClick={() => copy(l.motion_en, flash, 'הוראת התנועה')}>הוראת תנועה</button>
-          <button className="btn sm" onClick={() => vidIn.current?.click()}>העלאת סרטון</button>
-          {img && canDraft && <button className="btn sm" onClick={draft} disabled={!!busy}>עוד טיוטה</button>}
-          {img && vid && <button className="btn sm" onClick={film} disabled={!!busy}>סרטון חדש</button>}
-        </div>
-        <input ref={imgIn} type="file" accept="image/*" hidden onChange={(e) => up(e.target.files?.[0], 'image')} />
-        <input ref={vidIn} type="file" accept="video/*" hidden onChange={(e) => up(e.target.files?.[0], 'video')} />
-      </div>
-
       <button className="more" onClick={() => setOpen((o) => !o)} aria-expanded={open}>{open ? 'סגירת הטקסטים' : 'הטקסטים של הלוק'}</button>
       <AnimatePresence initial={false}>
         {open && (
           <motion.div className="lane-text" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
-            <label>זיקוק</label><Field label="זיקוק" multi v={l.distill} on={(v) => patch({ distill: v })} />
-            <label>הייקו</label>
-            <div className="haiku-edit">{[0, 1, 2].map((j) => <Field key={j} label={`שורה ${j + 1}`} cls="hk" v={l.haiku[j] ?? ''} on={(v) => { const h = [...l.haiku]; h[j] = v; patch({ haiku: h }); }} />)}</div>
-            <label>פרשנות</label><Field label="פרשנות" multi v={l.reading} on={(v) => patch({ reading: v })} />
-            <label>בד וגזרה</label><Field label="בד וגזרה" multi v={l.garment.text ?? ''} on={(v) => patch({ garment: { ...l.garment, text: v } })} />
-            <label>פרומפט באנגלית</label><Field label="פרומפט באנגלית" cls="en-fld" multi v={l.prompt_en} on={(v) => patch({ prompt_en: v })} />
+            <div><label>הייקו</label><HaikuEdit h={l.haiku} on={(h) => patch({ haiku: h })} /></div>
+            <div><label>זיקוק</label><Field label="זיקוק" multi v={l.distill} on={(v) => patch({ distill: v })} />
+              <label>פרשנות</label><Field label="פרשנות" multi v={l.reading} on={(v) => patch({ reading: v })} /></div>
+            <div><label>בד וגזרה</label><Field label="בד וגזרה" multi v={l.garment.text ?? ''} on={(v) => patch({ garment: { ...l.garment, text: v } })} />
+              <a className="link" href={MJ} target="_blank" rel="noreferrer">פתיחת מידג'רני</a></div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -191,14 +217,14 @@ function Editor({ c, apply, onDelete, canDraft }: { c: Collection; apply: (f: (c
   const patchL = (l: Look) => (p: Partial<Look>) => { apply((k) => ({ ...k, looks: k.looks.map((x) => (x.id === l.id ? { ...x, ...p } : x)) })); save(() => studio({ action: 'update_look', id: l.id, patch: p })); };
   const setMedia = (l: Look) => (f: (m: Media[]) => Media[]) => apply((k) => ({ ...k, looks: k.looks.map((x) => (x.id === l.id ? { ...x, media: f(x.media) } : x)) }));
   const ready = c.looks.filter((l) => l.stage === 'ready').length;
-  const shot = c.looks.filter((l) => primary(l, 'image')).length;
+  const shot = c.looks.filter((l) => lead(l, 'editorial')).length;
   const publish = () => { const s = c.status === 'published' ? 'draft' : 'published'; apply((x) => ({ ...x, status: s })); save(() => studio({ action: 'publish', id: c.id, status: s })); };
 
   return (
     <section className="editor" style={{ ['--accent' as string]: accentOf(c) }}>
       <header className="spread">
         <div className="spread-main">
-          <p className="kicker dark">{c.status === 'published' ? 'במסלול' : 'באטלייה'} · {shot}/3 צולמו · {ready}/3 מוכנים</p>
+          <p className="kicker dark">{c.status === 'published' ? 'במסלול' : 'באטלייה'} · {shot}/3 במגזין · {ready}/3 מוכנים</p>
           <Field label="שם הקולקציה" cls="title" v={plain(c.name)} on={(v) => patchC({ name: v })} />
           <p className="spread-ins"><Rich t={c.insight} /></p>
         </div>
@@ -214,7 +240,7 @@ function Editor({ c, apply, onDelete, canDraft }: { c: Collection; apply: (f: (c
         <div className="spread-act">
           <span className="saved" role="status">{msg}</span>
           <a className="btn" href={`#/show/${c.id}`}>צפייה בתצוגה</a>
-          <button className={`btn ${c.status === 'published' ? '' : 'dark'}`} onClick={publish}>{c.status === 'published' ? 'החזרה לאטלייה' : 'העלאה למסלול'}</button>
+          <button className="dot" onClick={publish}><i aria-hidden="true" />{c.status === 'published' ? 'החזרה לאטלייה' : 'העלאה למסלול'}</button>
           <button className="btn quiet danger" onClick={async () => { if (confirm(`למחוק את "${plain(c.name)}" עם כל הצילומים והסרטונים?`)) { await studio({ action: 'delete', id: c.id }).catch((e) => flash(e.message)); onDelete(); } }}>מחיקה</button>
         </div>
       </header>
@@ -232,7 +258,7 @@ function Editor({ c, apply, onDelete, canDraft }: { c: Collection; apply: (f: (c
             <label>שורת תובנה</label><Field label="שורת תובנה" v={c.insight} on={(v) => patchC({ insight: v })} />
             <span className="hint">מילה בין ** ** מקבלת מרקר.</span>
             <label>הייקו הקולקציה</label>
-            <div className="haiku-edit">{[0, 1, 2].map((j) => <Field key={j} label={`שורה ${j + 1}`} cls="hk big" v={c.haiku[j] ?? ''} on={(v) => { const h = [...c.haiku]; h[j] = v; patchC({ haiku: h }); }} />)}</div>
+            <HaikuEdit big h={c.haiku} on={(h) => patchC({ haiku: h })} />
             <label>פרשנות</label><Field label="פרשנות" multi v={c.reading} on={(v) => patchC({ reading: v })} />
             <label>מניפסט</label>
             {c.manifesto.map((m, j) => <Field key={j} label={`שורה ${j + 1}`} v={m} on={(v) => patchC({ manifesto: c.manifesto.map((x, q) => (q === j ? v : x)) })} />)}

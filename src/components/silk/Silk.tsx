@@ -13,7 +13,7 @@ export function SilkLive({ face, lining, seed = 0, className = '', interactive =
       try {
         const s = new Silk(ref.current, { face, lining, seed });
         silk.current = s;
-        const fit = () => { const r = ref.current!.getBoundingClientRect(); s.resize(Math.max(1, r.width), Math.max(1, r.height)); };
+        const fit = () => { if (!ref.current) return; const r = ref.current.getBoundingClientRect(); s.resize(Math.max(1, r.width), Math.max(1, r.height)); };
         fit(); ro = new ResizeObserver(fit); ro.observe(ref.current);
         if (matchMedia('(prefers-reduced-motion: reduce)').matches) s.frame(3); else s.start();
         setReady(true);

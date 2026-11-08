@@ -1,5 +1,6 @@
 import type { Collection, LinkRow, Media } from './types';
 import seed from '../data/seed.json';
+import stages from '../data/stages.json';
 
 export const SB_URL = 'https://ktqmwpbzcnzkhjskqisy.supabase.co';
 const ANON = 'sb_publishable_IkreG7naPa1h-d4kGp1gpA_sLU4tg5q';
@@ -16,6 +17,7 @@ export const seedCollection: Collection = {
     id: `seed-${l.n}`, collection_id: SEED_ID, n: l.n, name: l.name, distill: l.distill, haiku: l.haiku, reading: l.reading,
     garment: { text: l.garment }, model: l.model, place_he: l.place_he, place_en: l.place_en, light: l.light, camera: l.camera,
     prompt_he: l.prompt_he, prompt_en: l.prompt_en, motion_en: l.motion_en, stage: 'prompt', media: [],
+    prompts: (stages as Record<string, Collection['looks'][number]['prompts']>)[String(l.n)],
   })),
 };
 
@@ -57,12 +59,12 @@ export async function studio<T = Record<string, unknown>>(body: Record<string, u
 }
 
 /** Straight to storage through a signed URL, then registered as media of the look. */
-export async function uploadMedia(lookId: string, kind: Media['kind'], source: 'mj' | 'film' | 'upload', file: Blob, ext: string): Promise<Media> {
-  const s = await studio<{ signedUrl: string; url: string; path: string }>({ action: 'sign', look_id: lookId, ext, source });
+export async function uploadMedia(lookId: string, kind: Media['kind'], source: 'mj' | 'film' | 'upload', file: Blob, ext: string, stage: string = 'editorial'): Promise<Media> {
+  const s = await studio<{ signedUrl: string; url: string; path: string }>({ action: 'sign', look_id: lookId, ext, source, stage });
   const signed = s.signedUrl.startsWith('http') ? s.signedUrl : `${SB_URL}/storage/v1${s.signedUrl}`;
   const r = await fetch(signed, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'true' }, body: file });
   if (!r.ok) throw new Error(`ההעלאה נכשלה (${r.status})`);
-  const m = await studio<{ media: Media }>({ action: 'add_media', look_id: lookId, kind, source, url: s.url, path: s.path });
+  const m = await studio<{ media: Media }>({ action: 'add_media', look_id: lookId, kind, source, url: s.url, path: s.path, stage });
   return m.media;
 }
 

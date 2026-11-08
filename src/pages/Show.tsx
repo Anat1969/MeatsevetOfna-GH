@@ -71,7 +71,7 @@ export function Show({ id, look }: { id?: string; look?: number }) {
         <AnimatePresence mode="sync">
           {i === 0 && (
             <motion.div key="open" className="shot opening" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.8 } }}>
-              <div className="shot-media"><SilkLive face={open.lining} lining={open.face} seed={7} /></div>
+              <div className="shot-media"><SilkLive face="#f2f0ec" lining={open.lining} seed={7} /></div>
               <div className="open-shade" />
               <div className="open-text">
                 <motion.p className="kicker" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>{c.set_design.concept} · {c.set_design.place_he} <span className="en">{c.set_design.place_en}</span></motion.p>
