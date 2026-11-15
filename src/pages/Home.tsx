@@ -91,6 +91,15 @@ export function Home() {
         <span className="scroll-cue" aria-hidden="true">גלילה לגיליון</span>
       </section>
 
+      <section className="demo">
+        <video controls preload="none" playsInline poster="/demo-poster.jpg" src="/demo.mp4" aria-label="סרטון: מסלול, השראה נכנסת וקולקציה יוצאת למסלול" />
+        <div className="demo-text">
+          <span className="kicker dark">הסרטון · 45 שניות</span>
+          <p>שורה אחת של שיר, ופתאום יש <b>בד</b>, <b>צבע</b> וקפל שלא ראו עד עכשיו.</p>
+          <small>יצירה: A&amp;I · אד׳ ענת שטיבלמן</small>
+        </div>
+      </section>
+
       <section className="manif">
         <span className="kicker dark">המניפסט</span>
         {hero.manifesto.map((m, i) => (
