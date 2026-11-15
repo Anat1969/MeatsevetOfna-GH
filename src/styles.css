@@ -88,6 +88,12 @@ h1,h2,h3,p{margin:0}
 .cover-haiku{position:absolute;z-index:3;left:clamp(18px,4vw,64px);bottom:clamp(40px,9vh,110px);font:300 clamp(18px,1.6vw,24px)/1.6 var(--serif);display:flex;flex-direction:column;color:var(--ink);padding-right:14px;box-shadow:inset -2px 0 0 var(--accent)}
 .scroll-cue{position:absolute;z-index:3;left:50%;bottom:18px;translate:-50% 0;font:500 11px var(--mono);letter-spacing:.1em;color:var(--mute);animation:cue 2.4s ease-in-out infinite}
 @keyframes cue{50%{transform:translateY(6px);opacity:.5}}
+.demo{display:grid;grid-template-columns:minmax(0,1.618fr) minmax(0,1fr);gap:clamp(24px,4vw,72px);align-items:center;padding:clamp(48px,9vh,110px) clamp(18px,6vw,120px)}
+.demo video{width:100%;aspect-ratio:16/10;background:#14130f;object-fit:cover;display:block}
+.demo-text{display:flex;flex-direction:column;gap:14px}
+.demo-text p{font:300 clamp(22px,2.6vw,38px)/1.25 var(--serif)}
+.demo-text small{font:400 11px var(--mono);color:var(--mute)}
+@media (max-width:760px){.demo{grid-template-columns:1fr}}
 .manif{padding:clamp(60px,12vh,140px) clamp(18px,8vw,160px);display:flex;flex-direction:column;gap:6px}
 .manif p{font:300 clamp(30px,4.2vw,64px)/1.15 var(--serif);letter-spacing:-.01em}
 .manif p:nth-child(3){padding-right:8vw}.manif p:nth-child(4){padding-right:16vw;color:var(--accent)}
