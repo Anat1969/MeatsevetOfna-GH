@@ -77,22 +77,28 @@ async function sunoImport(cid: string, link: string): Promise<Row> {
   const html = (await r.text()).replace(/\\"/g, '"');
   const id = (r.url.match(/song\/([0-9a-f-]{36})/) ?? html.match(/song\/([0-9a-f-]{36})/))?.[1];
   if (!id) return { suno_state: "unknown" };
-  const dur = Number(html.match(new RegExp(`"id":"${id}"[\\s\\S]{0,4000}?"duration":([0-9.]+)`))?.[1] ?? html.match(/"duration":([0-9.]+)/)?.[1] ?? 0);
+  // the clip record: public length, visibility, and the progressive file (the page itself hides the audio address)
+  const clip = await fetch(`https://studio-api.prod.suno.com/api/clip/${id}`, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(20000) })
+    .then((x) => (x.ok ? x.json() : null)).catch(() => null) as Row | null;
+  const meta = (clip?.metadata ?? {}) as Row;
+  const dur = Number(meta.duration ?? html.match(new RegExp(`"id":"${id}"[\\s\\S]{0,4000}?"duration":([0-9.]+)`))?.[1] ?? html.match(/"duration":([0-9.]+)/)?.[1] ?? 0);
+  const isPublic = clip ? clip.is_public === true : !/"is_public":false/.test(html);
   const out: Row = { suno_id: id, ...(dur > 0 ? { suno_duration: Math.round(dur * 10) / 10 } : {}) };
-  const au = html.match(/"audio_url":"(https:\/\/cdn[0-9]?\.suno\.ai\/[^"]+\.(?:mp3|m4a))"/)?.[1] ?? "";
-  const tryUrls = [au, `https://cdn1.suno.ai/${id}.mp3`].filter(Boolean);
+  const media = Array.isArray(clip?.media_urls) ? (clip!.media_urls as Row[]).map((m) => String(m.url ?? "")).filter((u) => /^https:\/\/[a-z0-9.-]+\.(cloudfront\.net|suno\.ai|suno\.com)\//.test(u)) : [];
+  const au = [String(clip?.audio_url ?? ""), html.match(/"audio_url":"(https:\/\/cdn[0-9]?\.suno\.ai\/[^"]+\.(?:mp3|m4a))"/)?.[1] ?? ""].filter((u) => /^https:\/\/cdn[0-9]?\.suno\.ai\/.+\.(mp3|m4a)$/.test(u));
+  const tryUrls = [...media, ...au, `https://cdn1.suno.ai/${id}.mp3`];
   for (const u of tryUrls) {
     const a = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(60000) }).catch(() => null);
     if (!a?.ok || !/audio|octet/.test(a.headers.get("content-type") ?? "")) continue;
     const buf = await a.arrayBuffer();
     if (buf.byteLength < 10000 || buf.byteLength > 40 * 1024 * 1024) continue;
-    const ext = u.endsWith(".m4a") ? "m4a" : "mp3";
+    const ext = /\.m4a$|\.mp4$/.test(u) || /mp4/.test(a.headers.get("content-type") ?? "") ? "m4a" : "mp3";
     const path = `c/${cid}/soundtrack-suno-${Date.now()}.${ext}`;
     const up = await sb.storage.from(BUCKET).upload(path, buf, { contentType: ext === "mp3" ? "audio/mpeg" : "audio/mp4", cacheControl: "31536000" });
     if (up.error) throw new Error(up.error.message);
     return { ...out, suno_state: "imported", audio_url: sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl, audio_path: path, ...(dur > 0 ? { duration: out.suno_duration } : {}) };
   }
-  return { ...out, suno_state: /"is_public":false/.test(html) ? "private" : "no_audio" };
+  return { ...out, suno_state: isPublic ? "no_audio" : "private" };
 }
 
 function safeUrl(u: string) {

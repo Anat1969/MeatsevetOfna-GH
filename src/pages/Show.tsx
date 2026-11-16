@@ -1,10 +1,10 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SilkLive } from '../components/silk/Silk';
 import { Plate, WHITE, glossOf, lookColors } from '../components/Plate';
 import { Kinetic } from '../components/Kinetic';
 import { getCollection, listCollections } from '../lib/api';
-import type { Collection, Look } from '../lib/types';
+import type { Collection, Look, Media } from '../lib/types';
 import { accentOf, primary } from '../lib/types';
 import { Rich, bare, plain } from '../lib/text';
 import { go } from '../router';
@@ -12,16 +12,51 @@ import { audioDuration, choreography } from '../lib/soundtrack';
 
 const DWELL = 11000, OPEN = 7000;
 
-/** One look as a shot in a fashion film: slow push-in, words that rise, a band of the hidden colour between shots. */
-function Shot({ c, l, sound }: { c: Collection; l: Look; sound: boolean }) {
-  const has = !!(primary(l, 'image') || primary(l, 'video'));
+/** The look's whole making, in order: sketches, model studies, magazine images, then its films. */
+const REEL = ['sketch', 'model', 'editorial', 'film'] as const;
+const REEL_LABEL: Record<string, string> = { sketch: 'סקיצה', model: 'מודל', editorial: 'מגזין', film: 'סרטון' };
+const stageOf = (m: Media) => m.stage ?? (m.kind === 'video' ? 'film' : 'editorial');
+export function reelOf(l: Look): Media[] {
+  return REEL.flatMap((st) => l.media.filter((m) => stageOf(m) === st && (st === 'film' ? m.kind === 'video' : m.kind === 'image'))
+    .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.created_at.localeCompare(b.created_at)));
+}
+
+/** One look as a shot in a fashion film: its images and films pass one after another inside the look's time (a film gets twice an image's time). */
+function Shot({ c, l, sound, dwell, running }: { c: Collection; l: Look; sound: boolean; dwell: number; running: boolean }) {
+  const items = useMemo(() => reelOf(l), [l]);
+  const [k, setK] = useState(0);
+  const weight = (m: Media) => (m.kind === 'video' ? 2 : 1);
+  const total = items.reduce((a, m) => a + weight(m), 0) || 1;
+  const cur = items[k];
+  useEffect(() => {
+    if (!running || !cur || k >= items.length - 1) return;
+    const t = setTimeout(() => setK((x) => x + 1), (dwell * weight(cur)) / total);
+    return () => clearTimeout(t);
+  }, [k, running, dwell, total, items.length]);
+  const st = cur ? stageOf(cur) : '';
+  const nOfStage = cur ? items.filter((m) => stageOf(m) === st).indexOf(cur) + 1 : 0;
+  const ofStage = cur ? items.filter((m) => stageOf(m) === st).length : 0;
   return (
     <motion.div className="shot" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.8 } }} transition={{ duration: 1 }}>
-      <motion.div className="shot-media">
-        {has ? <Plate c={c} l={l} sound={sound} /> : <SilkLive {...WHITE} gloss={glossOf(l.n)} seed={l.n} />}
-      </motion.div>
+      <div className={`shot-media reel-${st || 'none'}`}>
+        {cur ? (
+          <AnimatePresence mode="sync">
+            <motion.div key={cur.id} className="reel-frame" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.9 }}>
+              {cur.kind === 'video'
+                ? <video className="plate" src={cur.url} autoPlay muted={!sound} playsInline />
+                : <img className="plate" src={cur.url} alt={`${plain(l.name)}: ${REEL_LABEL[st]}`} draggable={false} />}
+            </motion.div>
+          </AnimatePresence>
+        ) : <SilkLive {...WHITE} gloss={glossOf(l.n)} seed={l.n} />}
+      </div>
       <motion.div className="wipe" initial={{ x: '0%' }} animate={{ x: '-110%' }} transition={{ duration: 1.1, ease: [0.7, 0, 0.2, 1] }} />
       <div className="shot-shade" />
+      {cur && (
+        <div className="reel-tag" aria-live="polite">
+          <span>{REEL_LABEL[st]}{ofStage > 1 ? ` ${nOfStage}/${ofStage}` : ''}</span>
+          <span className="reel-ticks" aria-hidden="true">{items.map((m, j) => <i key={m.id} className={`${j === k ? 'on' : j < k ? 'past' : ''} t-${stageOf(m)}`} />)}</span>
+        </div>
+      )}
       <div className="shot-text">
         <motion.span className="shot-n" initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7, duration: 1 }}>{String(l.n).padStart(2, '0')}</motion.span>
         <Kinetic text={plain(l.name)} as="h2" className="shot-name" delay={0.9} />
@@ -125,7 +160,7 @@ export function Show({ id, look }: { id?: string; look?: number }) {
               </div>
             </motion.div>
           )}
-          {L && <Shot key={L.id} c={c} l={L} sound={sound} />}
+          {L && <Shot key={L.id} c={c} l={L} sound={sound} dwell={DWELL_MS} running={play && !curtain} />}
           {i === 4 && (
             <motion.div key="fin" className="shot finale" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div className="tri">

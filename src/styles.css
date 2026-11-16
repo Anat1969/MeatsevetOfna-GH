@@ -643,3 +643,21 @@ a.dot{text-decoration:none}
 .cell-tray{gap:10px}
 .cell-tray span{width:72px;height:72px}
 .cell-tray .x{width:20px;height:20px;font-size:13px}
+
+/* במסלול כל לוק עובר את כל הדרך: סקיצה, מודל, מגזין, סרטון (ענת, 16.11.2026) */
+.reel-frame{position:absolute;inset:0}
+.reel-frame .plate{width:100%;height:100%;object-fit:cover}
+.reel-sketch,.reel-model{background:#f3efe8}
+.reel-sketch .reel-frame .plate,.reel-model .reel-frame .plate{object-fit:contain;padding:3vh 46% 3vh 4vw}
+.reel-tag{position:absolute;top:22px;left:26px;z-index:3;display:flex;flex-direction:column;gap:8px;font:400 11px var(--mono);letter-spacing:.1em;color:var(--ink);background:rgba(243,239,232,.82);padding:8px 12px}
+.reel-ticks{display:flex;gap:4px}
+.reel-ticks i{width:14px;height:2px;background:rgba(20,18,16,.18);transition:background .4s}
+.reel-ticks i.past{background:rgba(20,18,16,.5)}
+.reel-ticks i.on{background:var(--ink)}
+@media (max-width:760px){.reel-sketch .reel-frame .plate,.reel-model .reel-frame .plate{padding:2vh 4vw 40vh}.reel-tag{top:12px;left:12px}}
+/* סקיצה ומודל על נייר: הטקסט בדיו, בלי הצללה */
+.shot:has(.reel-sketch,.reel-model) .shot-shade{opacity:0}
+.shot:has(.reel-sketch,.reel-model) .shot-text,.shot:has(.reel-sketch,.reel-model) .shot-text *:not(.shot-n){color:var(--ink)!important;text-shadow:none!important}
+.shot:has(.reel-sketch,.reel-model) .shot-n{color:transparent!important;-webkit-text-stroke-color:var(--ink)}
+.shot:has(.reel-sketch,.reel-model) .shot-text .haiku{box-shadow:inset -2px 0 0 var(--ink)}
+.shot-shade{transition:opacity .9s}
