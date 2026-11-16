@@ -98,6 +98,10 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       const later = await lane2.locator('.cell-editorial .cell-media img').getAttribute('src');
       ok(before !== after && later === before, `סימן ה-play מחליף תמונות כל 4 שניות (${before?.slice(-9)} ← ${after?.slice(-9)} ← ${later?.slice(-9)})`);
       await lane2.locator('.cell-editorial .play').click();
+      const tw = await lane2.locator('.cell-editorial .cell-tray span').first().evaluate((e) => e.getBoundingClientRect().width).catch(() => 0);
+      ok(tw >= 70, `התמונות הקטנות בסטודיו גדלו (${tw}px)`);
+      const bg = await page.locator('.cell .link').first().evaluate((e) => getComputedStyle(e).backgroundColor);
+      ok(bg !== 'rgba(0, 0, 0, 0)', `כפתורים על רקע אפור (${bg})`);
       // drag the magazine image of look 1 onto its model cell
       const lane = page.locator('.lane').first();
       await lane.locator('.cell-editorial .cell-media img').dragTo(lane.locator('.cell-model .cell-media'));
@@ -147,7 +151,30 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     const t1 = await page.evaluate(() => document.querySelector('audio').currentTime);
     const t = t1; void t0; // the headless audio clock runs faster than real time, so read it right after the click
     ok(t >= 17.4 && t < 19.5, `מעבר ידני ללוק 03 מזיז את השיר לנקודה שלו (${t.toFixed(1)} שניות)`);
+    ok(/המוזיקה מתנגנת/.test(await page.locator('.programme .state').nth(1).innerText()) && await page.locator('.programme .state.is-on').count() === 2, 'שני עיגולים שחורים: התצוגה בתנועה והמוזיקה מתנגנת');
+    await page.screenshot({ path: path.join(OUT, 'desk-show-sound.png') });
     ok(errs.length === 0, `פס קול: בלי שגיאות JS ${errs.join(' | ')}`);
+    await ctx.close();
+  }
+  // a private Suno song: no file, the show opens Suno and starts when she comes back
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+    await mock(ctx);
+    const sRow = { ...row, soundtrack: { suno_url: 'https://suno.com/s/abc', suno_id: 'x', suno_duration: 200, suno_state: 'private' } };
+    await ctx.route('**/rest/v1/mo_collections*', (r) => r.fulfill({ json: [sRow] }));
+    const page = await ctx.newPage();
+    const errs = []; page.on('pageerror', (e) => errs.push(e.message));
+    await page.goto(B + `#/show/${ID}`); await page.waitForTimeout(2500);
+    ok(/Suno/.test(await page.locator('.curtain').innerText()), 'שיר פרטי: מסך הכניסה מסביר שהשיר נפתח ב-Suno');
+    await page.evaluate(() => { window.open = (u) => { window.__opened = String(u); return null; }; });
+    await page.locator('.curtain-in').click(); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => window.__opened) === 'https://suno.com/s/abc' && await page.locator('.curtain-wait').isVisible(), 'הכניסה פותחת את השיר ב-Suno ומחכה לחזרה');
+    await page.waitForTimeout(800);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus'))); await page.waitForTimeout(500);
+    ok(!(await page.locator('.curtain').count()) && /התצוגה בתנועה/.test(await page.locator('.programme .state').first().innerText()), 'בחזרה מ-Suno התצוגה מתחילה, והעיגול השחור מראה שהיא בתנועה');
+    await page.goto(B + `#/studio/${ID}?tab=sound`); await page.waitForTimeout(2500);
+    ok(/פרטי/.test(await page.locator('.sound-state').innerText()), 'בסטודיו: הסבר שהשיר פרטי ומה עושים');
+    ok(errs.length === 0, `Suno: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();
   }
   await browser.close(); srv.kill();

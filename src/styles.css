@@ -620,3 +620,26 @@ a.dot{text-decoration:none}
 .curtain .kicker{font:300 clamp(28px,4vw,56px) 'Frank Ruhl Libre',serif;letter-spacing:0;color:var(--ink)}
 .curtain-in{font-size:18px}
 .curtain-note{font:400 11px var(--mono);letter-spacing:.08em;color:var(--mute)}
+
+/* כפתורים על רקע אפור, כדי להבדיל אותם מטקסט רגיל (ענת, 16.11.2026). העיגול השחור נשאר הפעולה הראשית. */
+.btn,.link,.more,.programme .ctl,label.btn{background:#e7e4de!important;padding:6px 12px!important;border-radius:2px!important;color:var(--ink)!important}
+.btn:hover,.link:hover,.more:hover,.programme .ctl:hover{background:#dcd8d0!important}
+.btn::after,.link::after,.more::after{display:none}
+.btn:disabled,.link:disabled{opacity:.4}
+.btn.danger{color:var(--bad)!important}
+
+/* מצב התצוגה והמוזיקה: עיגול שחור מלא כשפועל, טבעת כשכבוי */
+.programme button.state{display:inline-flex;align-items:center;gap:10px;color:var(--ink);background:none!important}
+.programme button.state::after{display:none}
+.state i{width:18px;height:18px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--ink);background:transparent;position:relative;flex:0 0 auto;transition:background .3s}
+.state.is-on i{background:var(--ink)}
+.state.is-on i::after{content:"";position:absolute;inset:-5px;border-radius:50%;box-shadow:0 0 0 1px var(--accent,var(--ink));animation:statePulse 2.2s ease-out infinite}
+@keyframes statePulse{from{transform:scale(.7);opacity:.9}to{transform:scale(1.5);opacity:0}}
+@media (prefers-reduced-motion:reduce){.state.is-on i::after{animation:none;opacity:.6}}
+.curtain-wait{font:300 20px 'Frank Ruhl Libre',serif}
+.sound-state{font-size:14px;line-height:1.7;margin:10px 0}
+
+/* התמונות הקטנות בסטודיו גדולות יותר */
+.cell-tray{gap:10px}
+.cell-tray span{width:72px;height:72px}
+.cell-tray .x{width:20px;height:20px;font-size:13px}

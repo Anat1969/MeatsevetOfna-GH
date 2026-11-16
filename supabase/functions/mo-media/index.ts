@@ -57,6 +57,7 @@ async function mergeSound(cid: string, p: Row, allow: string[]) {
   if (clean.audio_url && !String(clean.audio_url).includes(`/${BUCKET}/c/${cid}/`)) return json({ error: "audio" }, 400);
   if (clean.audio_path && !String(clean.audio_path).startsWith(`c/${cid}/`)) return json({ error: "audio" }, 400);
   if ("duration" in clean) { const d = Number(clean.duration); if (!(d > 0 && d < 3600)) delete clean.duration; else clean.duration = Math.round(d * 10) / 10; }
+  if (clean.suno_url && !clean.audio_url) Object.assign(clean, await sunoImport(cid, String(clean.suno_url)).catch(() => ({ suno_state: "unknown" })));
   if (typeof clean.handoff === "string") { clean.handoff_hash = await sha(String(clean.handoff)); clean.handoff_at = new Date().toISOString(); delete clean.handoff; }
   const { data: c } = await sb.from("mo_collections").select("soundtrack").eq("id", cid).single();
   if (!c) return json({ error: "הקולקציה לא נמצאה." }, 404);
@@ -67,6 +68,31 @@ async function mergeSound(cid: string, p: Row, allow: string[]) {
   await sb.from("mo_collections").update({ soundtrack: next }).eq("id", cid);
   const { handoff_hash: _h, ...pub } = next as Row;
   return json({ soundtrack: pub });
+}
+
+/** A Suno link (suno.com/s/… or /song/…): the song's id, length, and its audio when the song is public.
+ *  A private song gives no audio (Suno answers "forbidden"), and then the show plays the song in a Suno tab. */
+async function sunoImport(cid: string, link: string): Promise<Row> {
+  const r = await fetch(link, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36" }, redirect: "follow", signal: AbortSignal.timeout(20000) });
+  const html = (await r.text()).replace(/\\"/g, '"');
+  const id = (r.url.match(/song\/([0-9a-f-]{36})/) ?? html.match(/song\/([0-9a-f-]{36})/))?.[1];
+  if (!id) return { suno_state: "unknown" };
+  const dur = Number(html.match(new RegExp(`"id":"${id}"[\\s\\S]{0,4000}?"duration":([0-9.]+)`))?.[1] ?? html.match(/"duration":([0-9.]+)/)?.[1] ?? 0);
+  const out: Row = { suno_id: id, ...(dur > 0 ? { suno_duration: Math.round(dur * 10) / 10 } : {}) };
+  const au = html.match(/"audio_url":"(https:\/\/cdn[0-9]?\.suno\.ai\/[^"]+\.(?:mp3|m4a))"/)?.[1] ?? "";
+  const tryUrls = [au, `https://cdn1.suno.ai/${id}.mp3`].filter(Boolean);
+  for (const u of tryUrls) {
+    const a = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(60000) }).catch(() => null);
+    if (!a?.ok || !/audio|octet/.test(a.headers.get("content-type") ?? "")) continue;
+    const buf = await a.arrayBuffer();
+    if (buf.byteLength < 10000 || buf.byteLength > 40 * 1024 * 1024) continue;
+    const ext = u.endsWith(".m4a") ? "m4a" : "mp3";
+    const path = `c/${cid}/soundtrack-suno-${Date.now()}.${ext}`;
+    const up = await sb.storage.from(BUCKET).upload(path, buf, { contentType: ext === "mp3" ? "audio/mpeg" : "audio/mp4", cacheControl: "31536000" });
+    if (up.error) throw new Error(up.error.message);
+    return { ...out, suno_state: "imported", audio_url: sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl, audio_path: path, ...(dur > 0 ? { duration: out.suno_duration } : {}) };
+  }
+  return { ...out, suno_state: /"is_public":false/.test(html) ? "private" : "no_audio" };
 }
 
 function safeUrl(u: string) {

@@ -49,12 +49,15 @@ export function Show({ id, look }: { id?: string; look?: number }) {
   // The soundtrack leads: a curtain gives the browser its click, then the song sets the length of every shot.
   const audio = useRef<HTMLAudioElement>(null);
   const track = c?.soundtrack?.audio_url;
+  // no file (a private song in Suno): the music plays in a Suno tab, and the show keeps its time
+  const suno = !track && c?.soundtrack?.suno_url ? c.soundtrack.suno_url : '';
+  const [waiting, setWaiting] = useState(false);
   const [dur, setDur] = useState<number | undefined>();
   const [entered, setEntered] = useState(false);
   const [muted, setMuted] = useState(false);
-  useEffect(() => { setDur(c?.soundtrack?.duration); setEntered(false); if (track && !c?.soundtrack?.duration) audioDuration(track).then((d) => d && setDur(d)); }, [c?.id, track]);
-  const ch = track ? choreography(dur) : null;
-  const curtain = !!track && !entered;
+  useEffect(() => { setDur(c?.soundtrack?.duration ?? c?.soundtrack?.suno_duration); setEntered(false); setWaiting(false); if (track && !c?.soundtrack?.duration) audioDuration(track).then((d) => d && setDur(d)); }, [c?.id, track]);
+  const ch = track || suno ? choreography(dur ?? (suno ? 180 : undefined)) : null;
+  const curtain = !!(track || suno) && !entered;
   const OPEN_MS = ch ? ch.open * 1000 : OPEN, DWELL_MS = ch ? ch.look * 1000 : DWELL;
   const fade = useRef<number>();
   const fadeOut = useCallback(() => {
@@ -62,13 +65,23 @@ export function Show({ id, look }: { id?: string; look?: number }) {
     fade.current = window.setInterval(() => { a.volume = Math.max(0, a.volume - 0.05); if (a.volume <= 0.01) { clearInterval(fade.current); a.pause(); } }, 120);
   }, []);
   const seek = useCallback((n: number) => { const a = audio.current; if (a && ch && entered) { clearInterval(fade.current); a.volume = 0.85; a.currentTime = ch.at(n); if (play) a.play().catch(() => {}); } }, [ch, entered, play]);
+  const start = () => { setWaiting(false); setEntered(true); setI(0); setPlay(true); setSound(false); };
+  // Suno: open the song, and the show starts when she comes back to this tab (after pressing play there)
+  const openSuno = () => { window.open(suno, 'maslul-suno'); setWaiting(true); };
+  useEffect(() => {
+    if (!waiting) return;
+    const back = () => { if (document.visibilityState === 'visible') start(); };
+    const t = window.setTimeout(() => { addEventListener('focus', back); document.addEventListener('visibilitychange', back); }, 600);
+    return () => { clearTimeout(t); removeEventListener('focus', back); document.removeEventListener('visibilitychange', back); };
+  }, [waiting]);
   const enter = () => {
+    if (suno) { openSuno(); return; }
     setEntered(true); setI(0); setPlay(true); setSound(false);
     const a = audio.current; if (a) { a.currentTime = 0; a.volume = 0.85; a.muted = false; setMuted(false); a.play().catch(() => {}); }
   };
   useEffect(() => { const a = audio.current; if (!a || !entered) return; if (play && i < 4) { clearInterval(fade.current); a.volume = 0.85; a.play().catch(() => {}); } else if (!play && i < 4) a.pause(); }, [play, entered]);
   // the finale keeps the music to its end (or fades a long song)
-  useEffect(() => { if (i !== 4 || !entered || !ch) return; const a = audio.current; if (a && a.paused && play) a.play().catch(() => {}); const t = setTimeout(fadeOut, Math.max(0, ch.fin - 3) * 1000); return () => clearTimeout(t); }, [i, entered]);
+  useEffect(() => { if (i !== 4 || !entered || !ch || suno) return; const a = audio.current; if (a && a.paused && play) a.play().catch(() => {}); const t = setTimeout(fadeOut, Math.max(0, ch.fin - 3) * 1000); return () => clearTimeout(t); }, [i, entered]);
   useEffect(() => { if (audio.current) audio.current.muted = muted; }, [muted]);
 
   const move = useCallback((d: number) => setI((x) => Math.min(4, Math.max(0, x + d))), []);
@@ -136,8 +149,18 @@ export function Show({ id, look }: { id?: string; look?: number }) {
       {curtain && (
         <div className="curtain" role="dialog" aria-label="כניסה לתצוגה">
           <p className="kicker">{plain(c.name)}</p>
-          <button className="dot curtain-in" onClick={enter}><i aria-hidden="true" />כניסה</button>
-          <p className="curtain-note">התצוגה עם פס קול{ch ? `, ${Math.round(ch.T)} שניות` : ''}</p>
+          {!waiting ? (
+            <>
+              <button className="dot curtain-in" onClick={enter}><i aria-hidden="true" />כניסה</button>
+              <p className="curtain-note">{suno ? 'השיר נפתח ב-Suno. לוחצים שם play, חוזרים לכאן, והתצוגה מתחילה' : `התצוגה עם פס קול${ch ? `, ${Math.round(ch.T)} שניות` : ''}`}</p>
+            </>
+          ) : (
+            <>
+              <p className="curtain-wait">לוחצים play בלשונית של Suno, וחוזרים לכאן</p>
+              <button className="dot curtain-in" onClick={start}><i aria-hidden="true" />המוזיקה מתנגנת, מתחילים</button>
+              <button className="link" onClick={openSuno}>פתיחת Suno שוב</button>
+            </>
+          )}
         </div>
       )}
       <nav className="programme" aria-label="סדר התצוגה">
@@ -155,8 +178,9 @@ export function Show({ id, look }: { id?: string; look?: number }) {
             {all.map((x) => <option key={x.id} value={x.id}>{plain(x.name)}{x.status === 'draft' ? ' · טיוטה' : ''}</option>)}
           </select>
         )}
-        <button className="ctl" onClick={() => (i === 4 ? (track && entered ? enter() : (setI(0), setPlay(true))) : setPlay((p) => !p))} aria-pressed={play}>{i === 4 ? 'מהתחלה' : play ? 'עצירה' : 'הפעלה'}</button>
-        {track && entered && <button className="ctl" onClick={() => setMuted((m) => !m)} aria-pressed={!muted}>{muted ? 'פס קול' : 'השתקת הפס'}</button>}
+        <button className={`state${play && i < 4 && !curtain ? ' is-on' : ''}`} onClick={() => (curtain ? enter() : i === 4 ? (track && entered ? enter() : (setI(0), setPlay(true))) : setPlay((p) => !p))} aria-pressed={play && i < 4} title={i === 4 ? 'מהתחלה' : play ? 'לחיצה עוצרת' : 'לחיצה מפעילה'}><i aria-hidden="true" />{i === 4 ? 'מהתחלה' : play && !curtain ? 'התצוגה בתנועה' : 'התצוגה עצורה'}</button>
+        {track && <button className={`state${entered && !muted ? ' is-on' : ''}`} onClick={() => (entered ? setMuted((m) => !m) : enter())} aria-pressed={entered && !muted}><i aria-hidden="true" />{entered && !muted ? 'המוזיקה מתנגנת' : 'המוזיקה כבויה'}</button>}
+        {suno && <button className={`state${entered ? ' is-on' : ''}`} onClick={openSuno} title="השיר מתנגן בלשונית של Suno"><i aria-hidden="true" />{entered ? 'המוזיקה ב-Suno' : 'פתיחת המוזיקה'}</button>}
         {L && primary(L, 'video') && (!track || muted) && <button className="ctl" onClick={() => setSound((x) => !x)} aria-pressed={sound}>{sound ? 'השתקה' : 'סאונד'}</button>}
         <button className="ctl" onClick={() => root.current?.requestFullscreen?.()} title="מסך מלא (F)">מסך מלא</button>
         <i className="bar-progress" key={`${i}${play}`} style={{ animationDuration: `${i === 0 ? OPEN_MS : DWELL_MS}ms`, animationPlayState: play && i < 4 && !curtain ? 'running' : 'paused' }} />
