@@ -11,7 +11,7 @@ export default function App() {
     <>
       <TopBar route={r} />
       {r.name === 'home' && <Home />}
-      {r.name === 'studio' && <Studio id={r.id} />}
+      {r.name === 'studio' && <Studio id={r.id} q={r.q} />}
       {r.name === 'show' && <Show key={r.id ?? 'x'} id={r.id} look={r.look} />}
       {r.name === 'sets' && <Sets />}
     </>

@@ -15,6 +15,7 @@ export type Collection = {
   signature: { name?: string; text?: string }; principles: { title: string; text: string }[];
   palette: Swatch[]; set_design: { concept?: string; text?: string; place_he?: string; place_en?: string };
   note?: string; model?: string; looks: Look[];
+  soundtrack?: Soundtrack;
 };
 export type LinkRow = { id?: string; season: string; house: string; city_he?: string; city_en?: string; idea: string; url: string };
 
@@ -38,3 +39,5 @@ export const lead = (l: Look, stage: Shot | 'film') => {
 export const primary = (l: Look, kind: Media['kind']) => (kind === 'video' ? lead(l, 'film') : lead(l, 'editorial') ?? lead(l, 'model') ?? lead(l, 'sketch'));
 export const stageIndex = (s: Stage) => STAGES.findIndex((x) => x.id === s);
 export const accentOf = (c: Collection) => c.palette[4]?.hex ?? '#5E1F24';
+
+export type Soundtrack = { brief_he?: string; title?: string; suno_url?: string; song_id?: string; audio_url?: string; audio_path?: string; updated_at?: string };

@@ -1,4 +1,5 @@
-// מסלול: הזזת תמונות בין שלבים ובין לוקים, וייבוא תמונה שנגררה מאתר אחר (למשל לשונית של מידג'רני).
+// מסלול: הזזת תמונות בין שלבים ובין לוקים, ייבוא תמונה שנגררה מאתר אחר (למשל לשונית של מידג'רני),
+// ופס הקול של קולקציה (קישור Suno מפרטיטורה וקובץ שמע).
 // אותה הרשאה כמו mo-studio: כש-MO_OWNER_KEY מוגדר, נדרשת הכותרת x-owner-key.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
@@ -54,10 +55,35 @@ Deno.serve(async (req) => {
   if (owner && !same(req.headers.get("x-owner-key") ?? "", owner)) return json({ error: "צריך את סיסמת העורכת." }, 401);
   let b: Row;
   try { b = await req.json(); } catch { return json({ error: "json" }, 400); }
+  try {
+    // the soundtrack of a collection: brief, Suno link, title, and the audio file
+    if (b.action === "soundtrack" || b.action === "sign_audio") {
+      const cid = s(b.collection_id); if (!ID.test(cid)) return json({ error: "id" }, 400);
+      if (b.action === "sign_audio") {
+        const ext = s(b.ext).toLowerCase();
+        if (!/^(mp3|m4a|wav|ogg|webm|aac|mp4)$/.test(ext)) return json({ error: "קובץ שמע: MP3, M4A או WAV." }, 400);
+        const path = `c/${cid}/soundtrack-${Date.now()}.${ext}`;
+        const { data, error } = await sb.storage.from(BUCKET).createSignedUploadUrl(path);
+        if (error) throw new Error(error.message);
+        return json({ signedUrl: data.signedUrl, path, url: sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl });
+      }
+      const p = (b.patch ?? {}) as Row;
+      const allow = ["brief_he", "title", "suno_url", "song_id", "audio_url", "audio_path"];
+      const clean = Object.fromEntries(Object.entries(p).filter(([k, v]) => allow.includes(k) && typeof v === "string").map(([k, v]) => [k, String(v).slice(0, 4000)]));
+      if (clean.suno_url && !/^https:\/\/(www\.)?suno\.com\//.test(clean.suno_url)) return json({ error: "קישור Suno לא תקין." }, 400);
+      if (clean.audio_url && !String(clean.audio_url).includes(`/${BUCKET}/c/${cid}/`)) return json({ error: "audio" }, 400);
+      const { data: c } = await sb.from("mo_collections").select("soundtrack").eq("id", cid).single();
+      if (!c) return json({ error: "הקולקציה לא נמצאה." }, 404);
+      const old = (c.soundtrack ?? {}) as Row;
+      if (clean.audio_path && old.audio_path && old.audio_path !== clean.audio_path) await sb.storage.from(BUCKET).remove([String(old.audio_path)]);
+      const next = { ...old, ...clean, updated_at: new Date().toISOString() };
+      await sb.from("mo_collections").update({ soundtrack: next }).eq("id", cid);
+      return json({ soundtrack: next });
+    }
+
   const look = s(b.look_id), stage = s(b.stage);
   if (!ID.test(look) || !SHOTS.includes(stage)) return json({ error: "יעד לא תקין." }, 400);
 
-  try {
     if (b.action === "move") {
       const id = s(b.media_id); if (!ID.test(id)) return json({ error: "id" }, 400);
       const { data: m } = await sb.from("mo_media").select("*").eq("id", id).single();

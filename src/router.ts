@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-export type Route = { name: 'home' | 'studio' | 'show' | 'sets'; id?: string; look?: number };
+export type Route = { name: 'home' | 'studio' | 'show' | 'sets'; id?: string; look?: number; q?: Record<string, string> };
 export function parse(h: string): Route {
-  const [, a = '', b = '', c = ''] = h.replace(/^#/, '').split('/');
-  if (a === 'studio') return { name: 'studio', id: b || undefined };
+  const [path, query = ''] = h.replace(/^#/, '').split('?');
+  const q = Object.fromEntries(new URLSearchParams(query));
+  const [, a = '', b = '', c = ''] = path.split('/');
+  if (a === 'studio') return { name: 'studio', id: b || undefined, q };
   if (a === 'show') return { name: 'show', id: b || undefined, look: c ? Number(c) : undefined };
   if (a === 'sets') return { name: 'sets' };
   return { name: 'home' };

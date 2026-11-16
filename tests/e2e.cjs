@@ -45,6 +45,7 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       const H = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
       if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 200, headers: H });
       const b = JSON.parse(r.request().postData() || '{}'); moves.push(b);
+      if (b.action === 'soundtrack') return r.fulfill({ json: { soundtrack: b.patch }, headers: H });
       return r.fulfill({ json: { media: { id: b.media_id, look_id: b.look_id, stage: b.stage, kind: 'image', is_primary: true } }, headers: H });
     });
     await ctx.route('**/functions/v1/mo-studio', async (r) => {
@@ -104,6 +105,18 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       ok(moves.some((m) => m.action === 'move' && m.stage === 'model'), `גרירה בין שלבים נשלחה לשרת (${JSON.stringify(moves[0] || {})})`);
       ok(await lane.locator('.cell-model .cell-media img').count() === 1 && await lane.locator('.cell-editorial .cell-media img').count() === 0, 'התמונה עברה למשבצת המודל ויצאה מהמגזין');
       console.log('editorial after move:', await lane.locator('.cell-editorial .cell-media img').count(), 'model:', await lane.locator('.cell-model .cell-media img').count()); await page.screenshot({ path: path.join(OUT, 'desk-drag.png') });
+      // a song returns from Partitura and the soundtrack tab opens
+      await page.goto(B + `#/studio/${ID}?suno=${encodeURIComponent('https://suno.com/song/abc')}&song=s1&title=T`); await page.waitForTimeout(2500);
+      ok(moves.some((m) => m.action === 'soundtrack' && m.patch?.suno_url === 'https://suno.com/song/abc'), 'שיר שחזר מפרטיטורה נשמר בקולקציה');
+      ok(!page.url().includes('suno='), 'הכתובת נוקתה אחרי הקליטה');
+      await page.getByRole('tab', { name: 'פס קול' }).click();
+      const brief = await page.locator('.sound textarea').inputValue();
+      ok(brief.length > 80 && !/יעל|קלו מור|מאיפה את מתחילה|שמלת נפש/.test(brief), 'התדריך לפס הקול נכתב מהקולקציה ובלי רמז למקור');
+      await page.evaluate(() => { window.open = (u) => { window.__opened = String(u); return null; }; });
+      await page.locator('.sound .dot').click();
+      const opened = await page.evaluate(() => window.__opened || '');
+      ok(/^https:\/\/musicprompt-gh\.vercel\.app\/#\/create\?brief=.*&back=/.test(opened), `הכפתור פותח את פרטיטורה עם התדריך (${opened.slice(0, 60)})`);
+      await page.screenshot({ path: path.join(OUT, 'desk-sound.png') });
     }
     ok(errs.length === 0, `${tag}: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();

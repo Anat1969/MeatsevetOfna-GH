@@ -9,6 +9,7 @@ import { SHOTS, SOURCE_LABEL, STAGES, accentOf, lead, primary, stageIndex } from
 import type { Shot } from '../lib/types';
 import { Rich, bare, plain } from '../lib/text';
 import { go } from '../router';
+import { partituraLink, saveSoundtrack, soundtrackBrief, uploadSoundtrack } from '../lib/soundtrack';
 
 const MJ = 'https://www.midjourney.com/imagine';
 type Flash = (m: string) => void;
@@ -276,8 +277,52 @@ function Lane({ c, l, patch, setMedia, flash, canDraft, move }: { c: Collection;
   );
 }
 
+const SUNO = /^https:\/\/(www\.)?suno\.com\//;
+function Sound({ c, apply, flash }: { c: Collection; apply: (f: (c: Collection) => Collection) => void; flash: (m: string) => void }) {
+  const st = c.soundtrack ?? {};
+  const [brief, setBrief] = useState(st.brief_he || soundtrackBrief(c));
+  const [busy, setBusy] = useState(false);
+  const put = async (patch: Record<string, string>) => {
+    apply((x) => ({ ...x, soundtrack: { ...x.soundtrack, ...patch } }));
+    try { const r = await saveSoundtrack(c.id, patch); if (r?.soundtrack) apply((x) => ({ ...x, soundtrack: r.soundtrack })); flash('נשמר'); } catch (e) { flash((e as Error).message); }
+  };
+  const open = () => { put({ brief_he: brief }); window.open(partituraLink(c, brief), '_blank', 'noopener'); };
+  const file = async (f?: File | null) => {
+    if (!f) return;
+    if (!/^audio\//.test(f.type) && !/\.(mp3|m4a|wav|ogg|aac)$/i.test(f.name)) { flash('צריך קובץ שמע'); return; }
+    setBusy(true);
+    try { const r = await uploadSoundtrack(c.id, f); if (r?.soundtrack) apply((x) => ({ ...x, soundtrack: r.soundtrack })); flash('הפס עלה'); } catch (e) { flash((e as Error).message); }
+    setBusy(false);
+  };
+  return (
+    <div className="sound">
+      <div className="sound-brief">
+        <label>תדריך לפרטיטורה</label>
+        <Field label="תדריך לפס הקול" multi rows={7} v={brief} on={(v) => { setBrief(v); put({ brief_he: v }); }} />
+        <span className="hint">נכתב מתוך הקולקציה: תחושה, תפאורה, שלושת הלוקים וקצב הצעידה. פרטיטורה מזקקת אותו לפרומפט של Suno.</span>
+        <div className="sound-act">
+          <button className="dot" onClick={open}><i aria-hidden="true" />יצירת פס קול בפרטיטורה</button>
+          <button className="btn quiet" onClick={() => { const b = soundtrackBrief(c); setBrief(b); put({ brief_he: b }); }}>תדריך מחדש</button>
+        </div>
+      </div>
+      <div className="sound-track">
+        <label>הפס של הקולקציה</label>
+        {st.audio_url ? <audio className="sound-player" controls preload="metadata" src={st.audio_url} /> : <p className="muted">עוד אין קובץ. אחרי ההורדה מ-Suno מעלים אותו כאן, והוא מתנגן בתצוגה.</p>}
+        {st.title && <p className="sound-title">{st.title}</p>}
+        <label className={`btn${busy ? ' busy-line' : ''}`}>
+          {busy ? 'מעלה' : st.audio_url ? 'החלפת קובץ' : 'העלאת קובץ שמע'}
+          <input type="file" accept="audio/*" hidden onChange={(e) => file(e.target.files?.[0])} />
+        </label>
+        <label>קישור לשיר ב-Suno</label>
+        <Field label="קישור Suno" v={st.suno_url ?? ''} on={(v) => { const t = v.trim(); if (!t || SUNO.test(t)) put({ suno_url: t }); else flash('קישור Suno מתחיל ב-https://suno.com/'); }} />
+        {st.suno_url && <a className="link" href={st.suno_url} target="_blank" rel="noreferrer">האזנה ב-Suno</a>}
+      </div>
+    </div>
+  );
+}
+
 function Editor({ c, apply, onDelete, canDraft }: { c: Collection; apply: (f: (c: Collection) => Collection) => void; onDelete: () => void; canDraft: boolean }) {
-  const [msg, setMsg] = useState(''); const [tab, setTab] = useState<'prod' | 'text'>('prod');
+  const [msg, setMsg] = useState(''); const [tab, setTab] = useState<'prod' | 'text' | 'sound'>(location.hash.includes('tab=sound') ? 'sound' : 'prod');
   const flash = useCallback((m: string) => { setMsg(m); window.setTimeout(() => setMsg(''), 2600); }, []);
   const save = async (p: () => Promise<unknown>) => { setMsg('שומר'); try { await p(); setMsg('נשמר'); } catch (e) { setMsg((e as Error).message); } };
   const patchC = (p: Partial<Collection>) => { apply((x) => ({ ...x, ...p })); save(() => studio({ action: 'update_collection', id: c.id, patch: p })); };
@@ -333,9 +378,10 @@ function Editor({ c, apply, onDelete, canDraft }: { c: Collection; apply: (f: (c
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'prod'} className={tab === 'prod' ? 'on' : ''} onClick={() => setTab('prod')}>קו הייצור</button>
         <button role="tab" aria-selected={tab === 'text'} className={tab === 'text' ? 'on' : ''} onClick={() => setTab('text')}>הקולקציה במילים</button>
+        <button role="tab" aria-selected={tab === 'sound'} className={tab === 'sound' ? 'on' : ''} onClick={() => setTab('sound')}>פס קול</button>
       </div>
 
-      {tab === 'prod' ? (
+      {tab === 'sound' ? <Sound c={c} apply={apply} flash={flash} /> : tab === 'prod' ? (
         <div className="lanes">{c.looks.map((l) => <Lane key={l.id} c={c} l={l} patch={patchL(l)} setMedia={setMedia(l)} flash={flash} canDraft={canDraft} move={move} />)}</div>
       ) : (
         <div className="words">
@@ -363,7 +409,7 @@ function Editor({ c, apply, onDelete, canDraft }: { c: Collection; apply: (f: (c
   );
 }
 
-export function Studio({ id }: { id?: string }) {
+export function Studio({ id, q }: { id?: string; q?: Record<string, string> }) {
   const [list, setList] = useState<Collection[]>([]);
   const [cur, setCur] = useState<Collection | null>(null);
   const [st, setSt] = useState<{ locked: boolean; drafts: boolean } | null>(null);
@@ -372,6 +418,16 @@ export function Studio({ id }: { id?: string }) {
     studio<{ locked: boolean; ok: boolean; drafts: boolean }>({ action: 'status' }).then((s) => setSt({ locked: s.locked && !s.ok, drafts: s.drafts })).catch(() => setSt({ locked: false, drafts: false }));
   }, []);
   useEffect(() => { if (id) getCollection(id).then(setCur); else setCur(null); }, [id]);
+  // a song comes back from Partitura: #/studio/<id>?suno=…&song=…&title=…
+  useEffect(() => {
+    if (!id || !q || !(q.suno || q.song)) return;
+    const patch: Record<string, string> = {};
+    if (q.suno && /^https:\/\/(www\.)?suno\.com\//.test(q.suno)) patch.suno_url = q.suno;
+    if (q.song) patch.song_id = q.song.slice(0, 80);
+    if (q.title) patch.title = q.title.slice(0, 120);
+    history.replaceState(null, '', `#/studio/${id}?tab=sound`);
+    if (Object.keys(patch).length) saveSoundtrack(id, patch).then(() => getCollection(id).then(setCur)).catch(() => {});
+  }, [id, q?.suno, q?.song]);
   if (st?.locked) return <main className="studio"><Gate onOk={() => setSt({ ...st, locked: false })} /></main>;
   const update = (f: (c: Collection) => Collection) => setCur((prev) => { if (!prev) return prev; const n = f(prev); setList((l) => l.map((x) => (x.id === n.id ? n : x))); return n; });
   return (

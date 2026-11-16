@@ -39,6 +39,11 @@ export function Show({ id, look }: { id?: string; look?: number }) {
   const [play, setPlay] = useState(true);
   const [sound, setSound] = useState(false);
   const root = useRef<HTMLElement>(null);
+  // the collection's soundtrack (from Partitura). Browsers need a gesture, so it starts from the button.
+  const audio = useRef<HTMLAudioElement>(null);
+  const [music, setMusic] = useState(false);
+  const track = c?.soundtrack?.audio_url;
+  useEffect(() => { const a = audio.current; if (!a) return; if (music) { a.volume = 0.85; a.play().catch(() => setMusic(false)); } else a.pause(); }, [music, track]);
   useEffect(() => {
     listCollections().then((l) => { setAll(l); if (!id) setC(l.find((x) => x.status === 'published') ?? l[0]); });
     if (id) getCollection(id).then(setC);
@@ -61,6 +66,7 @@ export function Show({ id, look }: { id?: string; look?: number }) {
     addEventListener('keydown', k); return () => removeEventListener('keydown', k);
   }, [move]);
 
+  const toggleMusic = () => { if (!music) setSound(false); setMusic((m) => !m); };
   if (!c) return <main className="show"><p className="empty">מכינים את התצוגה.</p></main>;
   const L = i >= 1 && i <= 3 ? c.looks[i - 1] : null;
   const open = lookColors(c, 1);
@@ -101,6 +107,7 @@ export function Show({ id, look }: { id?: string; look?: number }) {
         </AnimatePresence>
       </div>
 
+      {track && <audio ref={audio} src={track} loop preload="auto" onEnded={() => setMusic(false)} />}
       <nav className="programme" aria-label="סדר התצוגה">
         <button className={i === 0 ? 'on' : ''} onClick={() => { setPlay(false); setI(0); }}><span className="num">00</span>פתיחה</button>
         {c.looks.map((l) => (
@@ -116,8 +123,9 @@ export function Show({ id, look }: { id?: string; look?: number }) {
             {all.map((x) => <option key={x.id} value={x.id}>{plain(x.name)}{x.status === 'draft' ? ' · טיוטה' : ''}</option>)}
           </select>
         )}
-        <button className="ctl" onClick={() => (i === 4 ? (setI(0), setPlay(true)) : setPlay((p) => !p))} aria-pressed={play}>{i === 4 ? 'מהתחלה' : play ? 'עצירה' : 'הפעלה'}</button>
-        {L && primary(L, 'video') && <button className="ctl" onClick={() => setSound((x) => !x)} aria-pressed={sound}>{sound ? 'השתקה' : 'סאונד'}</button>}
+        <button className="ctl" onClick={() => (i === 4 ? (setI(0), setPlay(true), audio.current && (audio.current.currentTime = 0)) : setPlay((p) => !p))} aria-pressed={play}>{i === 4 ? 'מהתחלה' : play ? 'עצירה' : 'הפעלה'}</button>
+        {track && <button className="ctl" onClick={toggleMusic} aria-pressed={music}>{music ? 'השתקת הפס' : 'פס קול'}</button>}
+        {L && primary(L, 'video') && !music && <button className="ctl" onClick={() => setSound((x) => !x)} aria-pressed={sound}>{sound ? 'השתקה' : 'סאונד'}</button>}
         <button className="ctl" onClick={() => root.current?.requestFullscreen?.()} title="מסך מלא (F)">מסך מלא</button>
         <i className="bar-progress" key={`${i}${play}`} style={{ animationDuration: `${i === 0 ? OPEN : DWELL}ms`, animationPlayState: play && i < 4 ? 'running' : 'paused' }} />
       </nav>
