@@ -8,6 +8,7 @@ import type { Collection, Look } from '../lib/types';
 import { accentOf, primary } from '../lib/types';
 import { Rich, bare, plain } from '../lib/text';
 import { go } from '../router';
+import { audioDuration, choreography } from '../lib/soundtrack';
 
 const DWELL = 11000, OPEN = 7000;
 
@@ -39,34 +40,58 @@ export function Show({ id, look }: { id?: string; look?: number }) {
   const [play, setPlay] = useState(true);
   const [sound, setSound] = useState(false);
   const root = useRef<HTMLElement>(null);
-  // the collection's soundtrack (from Partitura). Browsers need a gesture, so it starts from the button.
-  const audio = useRef<HTMLAudioElement>(null);
-  const [music, setMusic] = useState(false);
-  const track = c?.soundtrack?.audio_url;
-  useEffect(() => { const a = audio.current; if (!a) return; if (music) { a.volume = 0.85; a.play().catch(() => setMusic(false)); } else a.pause(); }, [music, track]);
   useEffect(() => {
     listCollections().then((l) => { setAll(l); if (!id) setC(l.find((x) => x.status === 'published') ?? l[0]); });
     if (id) getCollection(id).then(setC);
   }, [id]);
   useEffect(() => { if (look != null) setI(look); }, [look]);
+
+  // The soundtrack leads: a curtain gives the browser its click, then the song sets the length of every shot.
+  const audio = useRef<HTMLAudioElement>(null);
+  const track = c?.soundtrack?.audio_url;
+  const [dur, setDur] = useState<number | undefined>();
+  const [entered, setEntered] = useState(false);
+  const [muted, setMuted] = useState(false);
+  useEffect(() => { setDur(c?.soundtrack?.duration); setEntered(false); if (track && !c?.soundtrack?.duration) audioDuration(track).then((d) => d && setDur(d)); }, [c?.id, track]);
+  const ch = track ? choreography(dur) : null;
+  const curtain = !!track && !entered;
+  const OPEN_MS = ch ? ch.open * 1000 : OPEN, DWELL_MS = ch ? ch.look * 1000 : DWELL;
+  const fade = useRef<number>();
+  const fadeOut = useCallback(() => {
+    const a = audio.current; if (!a) return; clearInterval(fade.current);
+    fade.current = window.setInterval(() => { a.volume = Math.max(0, a.volume - 0.05); if (a.volume <= 0.01) { clearInterval(fade.current); a.pause(); } }, 120);
+  }, []);
+  const seek = useCallback((n: number) => { const a = audio.current; if (a && ch && entered) { clearInterval(fade.current); a.volume = 0.85; a.currentTime = ch.at(n); if (play) a.play().catch(() => {}); } }, [ch, entered, play]);
+  const enter = () => {
+    setEntered(true); setI(0); setPlay(true); setSound(false);
+    const a = audio.current; if (a) { a.currentTime = 0; a.volume = 0.85; a.muted = false; setMuted(false); a.play().catch(() => {}); }
+  };
+  useEffect(() => { const a = audio.current; if (!a || !entered) return; if (play && i < 4) { clearInterval(fade.current); a.volume = 0.85; a.play().catch(() => {}); } else if (!play && i < 4) a.pause(); }, [play, entered]);
+  // the finale keeps the music to its end (or fades a long song)
+  useEffect(() => { if (i !== 4 || !entered || !ch) return; const a = audio.current; if (a && a.paused && play) a.play().catch(() => {}); const t = setTimeout(fadeOut, Math.max(0, ch.fin - 3) * 1000); return () => clearTimeout(t); }, [i, entered]);
+  useEffect(() => { if (audio.current) audio.current.muted = muted; }, [muted]);
+
   const move = useCallback((d: number) => setI((x) => Math.min(4, Math.max(0, x + d))), []);
+  // with a song the show keeps running and the music jumps with it; without one, a manual step pauses the show
+  const jump = (n: number) => { n = Math.min(4, Math.max(0, n)); if (ch && entered) { setI(n); seek(n); } else { setPlay(false); setI(n); } };
+  const jumpRef = useRef((_: number) => {});
+  jumpRef.current = (d: number) => jump(i + d);
   useEffect(() => {
-    if (!play) return;
+    if (!play || curtain) return;
     if (i === 4) { setPlay(false); return; }
-    const t = setTimeout(() => move(1), i === 0 ? OPEN : DWELL);
+    const t = setTimeout(() => move(1), i === 0 ? OPEN_MS : DWELL_MS);
     return () => clearTimeout(t);
-  }, [i, play, move]);
+  }, [i, play, move, curtain, OPEN_MS, DWELL_MS]);
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') { setPlay(false); move(1); }
-      if (e.key === 'ArrowRight') { setPlay(false); move(-1); }
+      if (e.key === 'ArrowLeft') jumpRef.current(1);
+      if (e.key === 'ArrowRight') jumpRef.current(-1);
       if (e.key === ' ') { e.preventDefault(); setPlay((p) => !p); }
       if (e.key === 'f') root.current?.requestFullscreen?.();
     };
     addEventListener('keydown', k); return () => removeEventListener('keydown', k);
   }, [move]);
 
-  const toggleMusic = () => { if (!music) setSound(false); setMusic((m) => !m); };
   if (!c) return <main className="show"><p className="empty">מכינים את התצוגה.</p></main>;
   const L = i >= 1 && i <= 3 ? c.looks[i - 1] : null;
   const open = lookColors(c, 1);
@@ -107,27 +132,34 @@ export function Show({ id, look }: { id?: string; look?: number }) {
         </AnimatePresence>
       </div>
 
-      {track && <audio ref={audio} src={track} loop preload="auto" onEnded={() => setMusic(false)} />}
+      {track && <audio ref={audio} src={track} preload="auto" />}
+      {curtain && (
+        <div className="curtain" role="dialog" aria-label="כניסה לתצוגה">
+          <p className="kicker">{plain(c.name)}</p>
+          <button className="dot curtain-in" onClick={enter}><i aria-hidden="true" />כניסה</button>
+          <p className="curtain-note">התצוגה עם פס קול{ch ? `, ${Math.round(ch.T)} שניות` : ''}</p>
+        </div>
+      )}
       <nav className="programme" aria-label="סדר התצוגה">
-        <button className={i === 0 ? 'on' : ''} onClick={() => { setPlay(false); setI(0); }}><span className="num">00</span>פתיחה</button>
+        <button className={i === 0 ? 'on' : ''} onClick={() => jump(0)}><span className="num">00</span>פתיחה</button>
         {c.looks.map((l) => (
-          <button key={l.id} className={i === l.n ? 'on' : ''} onClick={() => { setPlay(false); setI(l.n); }}>
+          <button key={l.id} className={i === l.n ? 'on' : ''} onClick={() => jump(l.n)}>
             <span className="thumb"><Plate c={c} l={l} video={false} /></span>
             <span className="num">{String(l.n).padStart(2, '0')}</span>{plain(l.name)}
           </button>
         ))}
-        <button className={i === 4 ? 'on' : ''} onClick={() => { setPlay(false); setI(4); }}><span className="num">04</span>סיום</button>
+        <button className={i === 4 ? 'on' : ''} onClick={() => jump(4)}><span className="num">04</span>סיום</button>
         <span className="sp" />
         {all.length > 1 && (
           <select aria-label="בחירת קולקציה" value={c.id} onChange={(e) => go(`#/show/${e.target.value}`)}>
             {all.map((x) => <option key={x.id} value={x.id}>{plain(x.name)}{x.status === 'draft' ? ' · טיוטה' : ''}</option>)}
           </select>
         )}
-        <button className="ctl" onClick={() => (i === 4 ? (setI(0), setPlay(true), audio.current && (audio.current.currentTime = 0)) : setPlay((p) => !p))} aria-pressed={play}>{i === 4 ? 'מהתחלה' : play ? 'עצירה' : 'הפעלה'}</button>
-        {track && <button className="ctl" onClick={toggleMusic} aria-pressed={music}>{music ? 'השתקת הפס' : 'פס קול'}</button>}
-        {L && primary(L, 'video') && !music && <button className="ctl" onClick={() => setSound((x) => !x)} aria-pressed={sound}>{sound ? 'השתקה' : 'סאונד'}</button>}
+        <button className="ctl" onClick={() => (i === 4 ? (track && entered ? enter() : (setI(0), setPlay(true))) : setPlay((p) => !p))} aria-pressed={play}>{i === 4 ? 'מהתחלה' : play ? 'עצירה' : 'הפעלה'}</button>
+        {track && entered && <button className="ctl" onClick={() => setMuted((m) => !m)} aria-pressed={!muted}>{muted ? 'פס קול' : 'השתקת הפס'}</button>}
+        {L && primary(L, 'video') && (!track || muted) && <button className="ctl" onClick={() => setSound((x) => !x)} aria-pressed={sound}>{sound ? 'השתקה' : 'סאונד'}</button>}
         <button className="ctl" onClick={() => root.current?.requestFullscreen?.()} title="מסך מלא (F)">מסך מלא</button>
-        <i className="bar-progress" key={`${i}${play}`} style={{ animationDuration: `${i === 0 ? OPEN : DWELL}ms`, animationPlayState: play && i < 4 ? 'running' : 'paused' }} />
+        <i className="bar-progress" key={`${i}${play}`} style={{ animationDuration: `${i === 0 ? OPEN_MS : DWELL_MS}ms`, animationPlayState: play && i < 4 && !curtain ? 'running' : 'paused' }} />
       </nav>
     </main>
   );

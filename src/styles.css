@@ -611,3 +611,12 @@ a.dot{text-decoration:none}
 .sound-title{font-family:'Frank Ruhl Libre',serif;font-weight:300;font-size:20px;margin:4px 0 12px}
 .sound-track .btn{display:inline-block;cursor:pointer}
 @media (max-width:760px){.sound{grid-template-columns:1fr;padding:20px 16px}}
+
+/* הכניסה לתצוגה עם פס קול: הלחיצה שהדפדפן צריך, כמו רגע לפני שהאורות כבים */
+.curtain{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;background:#f3efe8;text-align:center}
+.curtain::before{content:"";position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--accent);opacity:.55}
+.curtain::after{content:"";position:absolute;left:-28px;right:-28px;top:50%;height:1px;background:var(--guide)}
+.curtain>*{position:relative;z-index:1;background:#f3efe8;padding:6px 18px}
+.curtain .kicker{font:300 clamp(28px,4vw,56px) 'Frank Ruhl Libre',serif;letter-spacing:0;color:var(--ink)}
+.curtain-in{font-size:18px}
+.curtain-note{font:400 11px var(--mono);letter-spacing:.08em;color:var(--mute)}

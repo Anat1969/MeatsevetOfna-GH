@@ -115,10 +115,39 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       await page.evaluate(() => { window.open = (u) => { window.__opened = String(u); return null; }; });
       await page.locator('.sound .dot').click();
       const opened = await page.evaluate(() => window.__opened || '');
+      ok(/[?&]key=[0-9a-f]{40}/.test(opened) && moves.some((m) => m.action === 'soundtrack' && /^[0-9a-f]{40}$/.test(m.patch?.handoff || '')), 'הקישור לפרטיטורה נושא מפתח חד־פעמי, והמפתח נשמר');
       ok(/^https:\/\/musicprompt-gh\.vercel\.app\/#\/create\?brief=.*&back=/.test(opened), `הכפתור פותח את פרטיטורה עם התדריך (${opened.slice(0, 60)})`);
       await page.screenshot({ path: path.join(OUT, 'desk-sound.png') });
     }
     ok(errs.length === 0, `${tag}: בלי שגיאות JS ${errs.join(' | ')}`);
+    await ctx.close();
+  }
+  // the show with a soundtrack: a curtain, and shots timed by the song (30 s: opening 4.5 s, each look 6.5 s)
+  {
+    const wav = (() => { const n = 8000 * 30, b = Buffer.alloc(44 + n, 128); b.write('RIFF', 0); b.writeUInt32LE(36 + n, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(8000, 24); b.writeUInt32LE(8000, 28); b.writeUInt16LE(1, 32); b.writeUInt16LE(8, 34); b.write('data', 36); b.writeUInt32LE(n, 40); return b; })();
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+    await mock(ctx);
+    const sRow = { ...row, soundtrack: { title: 'פס', audio_url: `${S}c/${ID}/soundtrack-1.wav`, duration: 30 } };
+    await ctx.route('**/rest/v1/mo_collections*', (r) => r.fulfill({ json: [sRow] }));
+    await ctx.route('**/soundtrack-1.wav', (r) => r.fulfill({ body: wav, contentType: 'audio/wav', headers: { 'Access-Control-Allow-Origin': '*', 'Accept-Ranges': 'bytes' } }));
+    const page = await ctx.newPage();
+    const errs = []; page.on('pageerror', (e) => errs.push(e.message));
+    await page.goto(B + `#/show/${ID}`); await page.waitForTimeout(2500);
+    ok(await page.locator('.curtain').isVisible(), 'תצוגה עם פס קול נפתחת במסך כניסה');
+    ok(/30 שניות/.test(await page.locator('.curtain').innerText()), 'מסך הכניסה יודע את אורך השיר');
+    await page.screenshot({ path: path.join(OUT, 'desk-curtain.png') });
+    await page.locator('.curtain-in').click(); await page.waitForTimeout(800);
+    ok(!(await page.locator('.curtain').count()), 'הכניסה פותחת את התצוגה');
+    const playing = await page.evaluate(() => { const a = document.querySelector('audio'); return a && !a.paused; });
+    ok(playing, 'השיר מתנגן מהכניסה');
+    await page.waitForTimeout(4600);
+    ok(await page.locator('.programme button.on .num').innerText() === '01', 'אחרי הפתיחה (15% מהשיר) עולה לוק 01');
+    const t0 = await page.evaluate(() => document.querySelector('audio').currentTime);
+    await page.locator('.programme button').nth(3).click();
+    const t1 = await page.evaluate(() => document.querySelector('audio').currentTime);
+    const t = t1; void t0; // the headless audio clock runs faster than real time, so read it right after the click
+    ok(t >= 17.4 && t < 19.5, `מעבר ידני ללוק 03 מזיז את השיר לנקודה שלו (${t.toFixed(1)} שניות)`);
+    ok(errs.length === 0, `פס קול: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();
   }
   await browser.close(); srv.kill();
