@@ -45,6 +45,7 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       const H = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
       if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 200, headers: H });
       const b = JSON.parse(r.request().postData() || '{}'); moves.push(b);
+      if (b.action === 'soundtrack') return r.fulfill({ json: { soundtrack: b.patch }, headers: H });
       return r.fulfill({ json: { media: { id: b.media_id, look_id: b.look_id, stage: b.stage, kind: 'image', is_primary: true } }, headers: H });
     });
     await ctx.route('**/functions/v1/mo-studio', async (r) => {
@@ -97,6 +98,10 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       const later = await lane2.locator('.cell-editorial .cell-media img').getAttribute('src');
       ok(before !== after && later === before, `סימן ה-play מחליף תמונות כל 4 שניות (${before?.slice(-9)} ← ${after?.slice(-9)} ← ${later?.slice(-9)})`);
       await lane2.locator('.cell-editorial .play').click();
+      const tw = await lane2.locator('.cell-editorial .cell-tray span').first().evaluate((e) => e.getBoundingClientRect().width).catch(() => 0);
+      ok(tw >= 70, `התמונות הקטנות בסטודיו גדלו (${tw}px)`);
+      const bg = await page.locator('.cell .link').first().evaluate((e) => getComputedStyle(e).backgroundColor);
+      ok(bg !== 'rgba(0, 0, 0, 0)', `כפתורים על רקע אפור (${bg})`);
       // drag the magazine image of look 1 onto its model cell
       const lane = page.locator('.lane').first();
       await lane.locator('.cell-editorial .cell-media img').dragTo(lane.locator('.cell-model .cell-media'));
@@ -104,8 +109,89 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       ok(moves.some((m) => m.action === 'move' && m.stage === 'model'), `גרירה בין שלבים נשלחה לשרת (${JSON.stringify(moves[0] || {})})`);
       ok(await lane.locator('.cell-model .cell-media img').count() === 1 && await lane.locator('.cell-editorial .cell-media img').count() === 0, 'התמונה עברה למשבצת המודל ויצאה מהמגזין');
       console.log('editorial after move:', await lane.locator('.cell-editorial .cell-media img').count(), 'model:', await lane.locator('.cell-model .cell-media img').count()); await page.screenshot({ path: path.join(OUT, 'desk-drag.png') });
+      // a song returns from Partitura and the soundtrack tab opens
+      await page.goto(B + `#/studio/${ID}?suno=${encodeURIComponent('https://suno.com/song/abc')}&song=s1&title=T`); await page.waitForTimeout(2500);
+      ok(moves.some((m) => m.action === 'soundtrack' && m.patch?.suno_url === 'https://suno.com/song/abc'), 'שיר שחזר מפרטיטורה נשמר בקולקציה');
+      ok(!page.url().includes('suno='), 'הכתובת נוקתה אחרי הקליטה');
+      await page.getByRole('tab', { name: 'פס קול' }).click();
+      const brief = await page.locator('.sound textarea').inputValue();
+      ok(brief.length > 80 && !/יעל|קלו מור|מאיפה את מתחילה|שמלת נפש/.test(brief), 'התדריך לפס הקול נכתב מהקולקציה ובלי רמז למקור');
+      await page.evaluate(() => { window.open = (u) => { window.__opened = String(u); return null; }; });
+      await page.locator('.sound .dot').click();
+      const opened = await page.evaluate(() => window.__opened || '');
+      ok(/[?&]key=[0-9a-f]{40}/.test(opened) && moves.some((m) => m.action === 'soundtrack' && /^[0-9a-f]{40}$/.test(m.patch?.handoff || '')), 'הקישור לפרטיטורה נושא מפתח חד־פעמי, והמפתח נשמר');
+      ok(/^https:\/\/musicprompt-gh\.vercel\.app\/#\/create\?brief=.*&back=/.test(opened), `הכפתור פותח את פרטיטורה עם התדריך (${opened.slice(0, 60)})`);
+      await page.screenshot({ path: path.join(OUT, 'desk-sound.png') });
     }
     ok(errs.length === 0, `${tag}: בלי שגיאות JS ${errs.join(' | ')}`);
+    await ctx.close();
+  }
+  // the show with a soundtrack: a curtain, and shots timed by the song (30 s: opening 4.5 s, each look 6.5 s)
+  {
+    const wav = (() => { const n = 8000 * 30, b = Buffer.alloc(44 + n, 128); b.write('RIFF', 0); b.writeUInt32LE(36 + n, 4); b.write('WAVEfmt ', 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(8000, 24); b.writeUInt32LE(8000, 28); b.writeUInt16LE(1, 32); b.writeUInt16LE(8, 34); b.write('data', 36); b.writeUInt32LE(n, 40); return b; })();
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+    await mock(ctx);
+    const sRow = { ...row, soundtrack: { title: 'פס', audio_url: `${S}c/${ID}/soundtrack-1.wav`, duration: 30 } };
+    await ctx.route('**/rest/v1/mo_collections*', (r) => r.fulfill({ json: [sRow] }));
+    await ctx.route('**/soundtrack-1.wav', (r) => r.fulfill({ body: wav, contentType: 'audio/wav', headers: { 'Access-Control-Allow-Origin': '*', 'Accept-Ranges': 'bytes' } }));
+    const page = await ctx.newPage();
+    const errs = []; page.on('pageerror', (e) => errs.push(e.message));
+    await page.goto(B + `#/show/${ID}`); await page.waitForTimeout(2500);
+    ok(await page.locator('.curtain').isVisible(), 'תצוגה עם פס קול נפתחת במסך כניסה');
+    ok(/30 שניות/.test(await page.locator('.curtain').innerText()), 'מסך הכניסה יודע את אורך השיר');
+    await page.screenshot({ path: path.join(OUT, 'desk-curtain.png') });
+    await page.locator('.curtain-in').click(); await page.waitForTimeout(800);
+    ok(!(await page.locator('.curtain').count()), 'הכניסה פותחת את התצוגה');
+    const playing = await page.evaluate(() => { const a = document.querySelector('audio'); return a && !a.paused; });
+    ok(playing, 'השיר מתנגן מהכניסה');
+    await page.waitForTimeout(4600);
+    ok(await page.locator('.programme button.on .num').innerText() === '01', 'אחרי הפתיחה (15% מהשיר) עולה לוק 01');
+    const t0 = await page.evaluate(() => document.querySelector('audio').currentTime);
+    const t1 = await page.evaluate(() => new Promise((ok) => { document.querySelectorAll('.programme button')[3].click(); requestAnimationFrame(() => setTimeout(() => ok(document.querySelector('audio').currentTime), 0)); }));
+    const t = t1; void t0; // the headless audio clock runs faster than real time, so read it right after the click
+    ok(t >= 17.4 && t < 19.5, `מעבר ידני ללוק 03 מזיז את השיר לנקודה שלו (${t.toFixed(1)} שניות)`);
+    ok(/המוזיקה מתנגנת/.test(await page.locator('.programme .state').nth(1).innerText()) && await page.locator('.programme .state.is-on').count() === 2, 'שני עיגולים שחורים: התצוגה בתנועה והמוזיקה מתנגנת');
+    await page.screenshot({ path: path.join(OUT, 'desk-show-sound.png') });
+    ok(errs.length === 0, `פס קול: בלי שגיאות JS ${errs.join(' | ')}`);
+    await ctx.close();
+  }
+  // each look runs its whole making: sketch, model, magazine, film
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+    await mock(ctx);
+    const L1 = '00000000-0000-4000-8000-000000000101';
+    const extra = [['sketch', 'image', 'look2.png'], ['model', 'image', 'look3.png'], ['film', 'video', 'film.webm']].map(([stage, kind, f], j) => ({ id: `00000000-0000-4000-8000-00000000050${j}`, look_id: L1, kind, source: 'upload', stage, url: `${S}${f}`, is_primary: true, created_at: '2026-11-08T08:00:00Z' }));
+    const rRow = { ...row, looks: row.looks.map((l, j) => (j === 0 ? { ...l, media: [...extra, ...l.media] } : l)) };
+    await ctx.route('**/rest/v1/mo_collections*', (r) => r.fulfill({ json: [rRow] }));
+    const page = await ctx.newPage();
+    const errs = []; page.on('pageerror', (e) => errs.push(e.message));
+    await page.goto(B + `#/show/${ID}/1`); await page.waitForTimeout(1200);
+    ok(await page.locator('.reel-ticks i').count() === 4, 'סימון של כל התמונות של הלוק');
+    const seen = [];
+    for (let t = 0; t < 10; t++) { const tag = await page.locator('.reel-tag span').first().innerText().catch(() => ''); if (tag && seen[seen.length - 1] !== tag) seen.push(tag); if (t === 1) await page.screenshot({ path: path.join(OUT, 'desk-reel-sketch.png') }); await page.waitForTimeout(1000); }
+    ok(seen.join('>').startsWith('סקיצה>מודל>מגזין') && seen.some((x) => x.startsWith('סרטון')), `לוק במסלול עובר סקיצה, מודל, מגזין וסרטון (${seen.join(' > ')})`);
+    ok(errs.length === 0, `רצף הלוק: בלי שגיאות JS ${errs.join(' | ')}`);
+    await ctx.close();
+  }
+  // a private Suno song: no file, the show opens Suno and starts when she comes back
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+    await mock(ctx);
+    const sRow = { ...row, soundtrack: { suno_url: 'https://suno.com/s/abc', suno_id: 'x', suno_duration: 200, suno_state: 'private' } };
+    await ctx.route('**/rest/v1/mo_collections*', (r) => r.fulfill({ json: [sRow] }));
+    const page = await ctx.newPage();
+    const errs = []; page.on('pageerror', (e) => errs.push(e.message));
+    await page.goto(B + `#/show/${ID}`); await page.waitForTimeout(2500);
+    ok(/Suno/.test(await page.locator('.curtain').innerText()), 'שיר פרטי: מסך הכניסה מסביר שהשיר נפתח ב-Suno');
+    await page.evaluate(() => { window.open = (u) => { window.__opened = String(u); return null; }; });
+    await page.locator('.curtain-in').click(); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => window.__opened) === 'https://suno.com/s/abc' && await page.locator('.curtain-wait').isVisible(), 'הכניסה פותחת את השיר ב-Suno ומחכה לחזרה');
+    await page.waitForTimeout(800);
+    await page.evaluate(() => window.dispatchEvent(new Event('focus'))); await page.waitForTimeout(500);
+    ok(!(await page.locator('.curtain').count()) && /התצוגה בתנועה/.test(await page.locator('.programme .state').first().innerText()), 'בחזרה מ-Suno התצוגה מתחילה, והעיגול השחור מראה שהיא בתנועה');
+    await page.goto(B + `#/studio/${ID}?tab=sound`); await page.waitForTimeout(2500);
+    ok(/פרטי/.test(await page.locator('.sound-state').innerText()), 'בסטודיו: הסבר שהשיר פרטי ומה עושים');
+    ok(errs.length === 0, `Suno: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();
   }
   await browser.close(); srv.kill();
