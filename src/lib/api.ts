@@ -115,3 +115,14 @@ export async function promptFn<T = Record<string, unknown>>(body: Record<string,
   if (!r.ok) throw new Error(j.error || `שגיאה ${r.status}`);
   return j as T;
 }
+
+/** Private inspiration source: answers only when the owner key is set on the server and sent here. */
+export type SourceRow = { title: string; author: string; body: string; image_path: string | null };
+export async function sourceFn(body: Record<string, unknown>): Promise<{ source?: SourceRow | null; imageUrl?: string; ok?: boolean }> {
+  const r = await fetch(`${SB_URL}/functions/v1/mo-source`, { method: 'POST', headers: { ...H, 'Content-Type': 'application/json', 'x-owner-key': ownerKey.get() }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 403) throw new Error('LOCKED');
+  if (r.status === 401) throw new Error('OWNER');
+  if (!r.ok) throw new Error(j.error || `שגיאה ${r.status}`);
+  return j;
+}
