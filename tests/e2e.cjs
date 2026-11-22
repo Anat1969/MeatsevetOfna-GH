@@ -40,6 +40,7 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     await ctx.route('**/rest/v1/mo_collections*', (r) => r.fulfill({ json: [row] }));
     await ctx.route('**/rest/v1/mo_links*', (r) => r.fulfill({ json: [] }));
     await ctx.route('**/storage/v1/object/public/mo-media/**', (r) => { const n = Number((r.request().url().match(/look(\d)/) || [0, 1])[1]); r.fulfill({ body: shots[(n - 1) % 3], contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' } }); });
+    await ctx.route('**/storage/v1/render/image/public/mo-media/**', (r) => { const n = Number((r.request().url().match(/look(\d)/) || [0, 1])[1]); r.fulfill({ body: shots[(n - 1) % 3], contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' } }); });
     await ctx.route('**/storage/v1/object/upload/sign/**', (r) => { uploads.push(r.request().postDataBuffer()?.length ?? 0); r.fulfill({ json: { Key: 'x' }, headers: { 'Access-Control-Allow-Origin': '*' } }); });
     await ctx.route('**/functions/v1/mo-media', async (r) => {
       const H = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
@@ -165,10 +166,10 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     await ctx.route('**/rest/v1/mo_collections*', (r) => r.fulfill({ json: [rRow] }));
     const page = await ctx.newPage();
     const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-    await page.goto(B + `#/show/${ID}/1`); await page.waitForTimeout(1200);
+    await page.goto(B + `#/show/${ID}/1`, { waitUntil: 'commit' }); await page.waitForSelector('.reel-tag span'); // the fonts come from the network and can hold the load event past the first image
     ok(await page.locator('.reel-ticks i').count() === 4, 'סימון של כל התמונות של הלוק');
     const seen = [];
-    for (let t = 0; t < 10; t++) { const tag = await page.locator('.reel-tag span').first().innerText().catch(() => ''); if (tag && seen[seen.length - 1] !== tag) seen.push(tag); if (t === 1) await page.screenshot({ path: path.join(OUT, 'desk-reel-sketch.png') }); await page.waitForTimeout(1000); }
+    for (let t = 0; t < 22; t++) { const tag = await page.locator('.reel-tag span').first().innerText().catch(() => ''); if (tag && seen[seen.length - 1] !== tag) seen.push(tag); if (t === 1) await page.screenshot({ path: path.join(OUT, 'desk-reel-sketch.png') }); await page.waitForTimeout(500); }
     ok(seen.join('>').startsWith('סקיצה>מודל>מגזין') && seen.some((x) => x.startsWith('סרטון')), `לוק במסלול עובר סקיצה, מודל, מגזין וסרטון (${seen.join(' > ')})`);
     ok(errs.length === 0, `רצף הלוק: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();
@@ -192,6 +193,38 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     await page.goto(B + `#/studio/${ID}?tab=sound`); await page.waitForTimeout(2500);
     ok(/פרטי/.test(await page.locator('.sound-state').innerText()), 'בסטודיו: הסבר שהשיר פרטי ומה עושים');
     ok(errs.length === 0, `Suno: בלי שגיאות JS ${errs.join(' | ')}`);
+    await ctx.close();
+  }
+  // articles: every collection whose looks all have a photograph is one A4 page, listed for reading and printing
+  for (const [tag, vp] of [['מחשב', { width: 1440, height: 900 }], ['נייד', { width: 390, height: 844 }]]) {
+    const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1 });
+    await mock(ctx);
+    const full = { ...row, looks: row.looks.map((l) => (l.media.length ? l : { ...l, media: [{ id: '00000000-0000-4000-8000-000000000703', look_id: l.id, kind: 'image', source: 'mj', stage: 'editorial', url: `${S}look3.png`, is_primary: true, created_at: '2026-11-08T10:00:00Z' }] })) };
+    const bare = { ...row, id: '0f1e2d3c-0000-4000-8000-000000000002', name: 'קולקציה בלי תמונות', looks: row.looks.map((l) => ({ ...l, media: [] })) };
+    await ctx.route('**/rest/v1/mo_collections*', (r) => r.fulfill({ json: [bare, full] }));
+    const page = await ctx.newPage();
+    const errs = []; page.on('pageerror', (e) => errs.push(e.message));
+    await page.goto(B + '#/'); await page.waitForTimeout(800);
+    await page.locator('.nav a', { hasText: 'כתבות' }).click(); await page.waitForTimeout(2500);
+    ok(await page.locator('.sheet').count() === 1 && await page.locator('.arts-rail ol a').count() === 1, `${tag} כתבות: כתבה אחת לקולקציה שיש לה תמונה לכל לוק, ורשימה לצדה`);
+    ok(/קולקציה בלי תמונות/.test(await page.locator('.arts-wait').first().innerText()), `${tag} כתבות: קולקציה בלי תמונות מחכה ולא מוצגת ככתבה`);
+    const fit = await page.evaluate(() => { const s = document.querySelector('.sheet'); const r = s.getBoundingClientRect(); return { over: s.scrollHeight - s.clientHeight, ratio: r.height / r.width, k: Number(s.style.getPropertyValue('--k')), wide: r.width, vw: innerWidth }; });
+    ok(fit.over <= 1 && Math.abs(fit.ratio - 297 / 210) < 0.01, `${tag} כתבות: העמוד ביחס A4 והטקסט לא גולש (גלישה ${fit.over}, גודל טקסט ${fit.k.toFixed(2)})`);
+    ok(fit.k > 0.75, `${tag} כתבות: הטקסט קריא (${fit.k.toFixed(2)})`);
+    ok(fit.wide <= fit.vw && await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 0, `${tag} כתבות: בלי גלילה אופקית`);
+    ok(await page.locator('.sheet .sh-three img').count() === 3 && await page.evaluate(() => [...document.querySelectorAll('.sheet .sh-three img')].every((i) => i.naturalWidth > 0)), `${tag} כתבות: שלוש החלופות עם תמונה`);
+    ok(await page.locator('.sheet .sh-haiku').count() === 4 && await page.locator('.sheet .sh-rules li').count() === 3, `${tag} כתבות: ארבעה שירים עם פרשנות, ושלושה עקרונות`);
+    ok(await page.locator('ai-menu .logo').isVisible(), `${tag} כתבות: כפתור הלוגו A&I בסרגל`);
+    ok(!/יעל|קלו מור|מאיפה את מתחילה|שמלת נפש/.test(await page.locator('main').innerText()), `${tag} כתבות: אין רמז למקור ההשראה`);
+    await page.screenshot({ path: path.join(OUT, `${vp.width === 390 ? 'mobile' : 'desk'}-articles.png`) });
+    if (vp.width === 1440) {
+      const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
+      const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
+      ok(pages === 1, `כתבות: ההדפסה יוצאת עמוד A4 אחד לכתבה (${pages})`);
+      await page.goto(B + `#/articles/${ID}`); await page.waitForTimeout(1500);
+      ok(await page.locator(`#a-${ID} .sheet`).isVisible(), 'כתבות: לכל כתבה כתובת משלה');
+    }
+    ok(errs.length === 0, `${tag} כתבות: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();
   }
   await browser.close(); srv.kill();

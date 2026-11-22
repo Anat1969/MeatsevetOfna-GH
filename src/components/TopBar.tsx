@@ -7,6 +7,7 @@ const NAV: { r: Route['name']; label: string; href: string }[] = [
   { r: 'home', label: 'בית', href: '#/' },
   { r: 'studio', label: 'סטודיו', href: '#/studio' },
   { r: 'show', label: 'מסלול', href: '#/show' },
+  { r: 'articles', label: 'כתבות', href: '#/articles' },
   { r: 'sets', label: 'תפאורות 2026', href: '#/sets' },
 ];
 
