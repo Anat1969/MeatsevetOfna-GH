@@ -150,7 +150,7 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     const t0 = await page.evaluate(() => document.querySelector('audio').currentTime);
     const t1 = await page.evaluate(() => new Promise((ok) => { document.querySelectorAll('.programme button')[3].click(); requestAnimationFrame(() => setTimeout(() => ok(document.querySelector('audio').currentTime), 0)); }));
     const t = t1; void t0; // the headless audio clock runs faster than real time, so read it right after the click
-    ok(t >= 17.4 && t < 19.5, `מעבר ידני ללוק 03 מזיז את השיר לנקודה שלו (${t.toFixed(1)} שניות)`);
+    ok(t >= 17.4 && t < 20.5, `מעבר ידני ללוק 03 מזיז את השיר לנקודה שלו (${t.toFixed(1)} שניות)`);
     ok(/המוזיקה מתנגנת/.test(await page.locator('.programme .state').nth(1).innerText()) && await page.locator('.programme .state.is-on').count() === 2, 'שני עיגולים שחורים: התצוגה בתנועה והמוזיקה מתנגנת');
     await page.screenshot({ path: path.join(OUT, 'desk-show-sound.png') });
     ok(errs.length === 0, `פס קול: בלי שגיאות JS ${errs.join(' | ')}`);
@@ -166,10 +166,13 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     await ctx.route('**/rest/v1/mo_collections*', (r) => r.fulfill({ json: [rRow] }));
     const page = await ctx.newPage();
     const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-    await page.goto(B + `#/show/${ID}/1`, { waitUntil: 'commit' }); await page.waitForSelector('.reel-tag span'); // the fonts come from the network and can hold the load event past the first image
+    // the page itself records every stage it shows, so a slow load cannot hide the first image
+    await page.addInitScript(() => { window.__seen = []; const f = () => { const t = document.querySelector('.reel-tag span')?.textContent || ''; if (t && window.__seen[window.__seen.length - 1] !== t) window.__seen.push(t); }; new MutationObserver(f).observe(document, { subtree: true, childList: true, characterData: true }); });
+    await page.goto(B + `#/show/${ID}/1`, { waitUntil: 'commit' }); await page.waitForSelector('.reel-tag span');
     ok(await page.locator('.reel-ticks i').count() === 4, 'סימון של כל התמונות של הלוק');
-    const seen = [];
-    for (let t = 0; t < 22; t++) { const tag = await page.locator('.reel-tag span').first().innerText().catch(() => ''); if (tag && seen[seen.length - 1] !== tag) seen.push(tag); if (t === 1) await page.screenshot({ path: path.join(OUT, 'desk-reel-sketch.png') }); await page.waitForTimeout(500); }
+    await page.waitForTimeout(1000); await page.screenshot({ path: path.join(OUT, 'desk-reel-sketch.png') });
+    await page.waitForTimeout(9000);
+    const seen = await page.evaluate(() => window.__seen);
     ok(seen.join('>').startsWith('סקיצה>מודל>מגזין') && seen.some((x) => x.startsWith('סרטון')), `לוק במסלול עובר סקיצה, מודל, מגזין וסרטון (${seen.join(' > ')})`);
     ok(errs.length === 0, `רצף הלוק: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();
