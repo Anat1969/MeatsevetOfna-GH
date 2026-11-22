@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plate } from '../components/Plate';
 import { SilkLive } from '../components/silk/Silk';
 import { makeFilm } from '../components/VideoMaker';
-import { DRAG_TYPE, droppedUrl, getCollection, listCollections, mediaFn, ownerKey, promptBrief, promptFn, shrink, studio, uploadMedia } from '../lib/api';
+import { DRAG_TYPE, droppedUrl, getCollection, listCollections, mediaFn, ownerKey, promptBrief, promptFn, shrink, sourceFn, studio, uploadMedia } from '../lib/api';
 import type { Collection, Look, Media } from '../lib/types';
 import { SHOTS, SOURCE_LABEL, STAGES, accentOf, lead, primary, stageIndex } from '../lib/types';
 import type { Shot } from '../lib/types';
@@ -277,6 +277,43 @@ function Lane({ c, l, patch, setMedia, flash, canDraft, move }: { c: Collection;
   );
 }
 
+/** מקור ההשראה: פרטי. נשמר בטבלה סגורה ונקרא רק עם מפתח העורכת, ולא מופיע בבית, במסלול או בקישורי שיתוף. */
+function SourcePanel({ id }: { id: string }) {
+  const [state, setState] = useState<'load' | 'locked' | 'owner' | 'ok'>('load');
+  const [row, setRow] = useState({ title: '', author: '', body: '' });
+  const [imageUrl, setImageUrl] = useState(''); const [file, setFile] = useState<File | null>(null); const [msg, setMsg] = useState('');
+  const load = useCallback(async () => {
+    setState('load');
+    try { const r = await sourceFn({ action: 'get', id }); setRow({ title: r.source?.title ?? '', author: r.source?.author ?? '', body: r.source?.body ?? '' }); setImageUrl(r.imageUrl ?? ''); setState('ok'); }
+    catch (e) { setState((e as Error).message === 'LOCKED' ? 'locked' : (e as Error).message === 'OWNER' ? 'owner' : 'locked'); }
+  }, [id]);
+  useEffect(() => { load(); }, [load]);
+  const save = async () => {
+    setMsg('שומר');
+    try {
+      const image = file ? await new Promise<string>((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = rej; fr.readAsDataURL(file); }) : undefined;
+      await sourceFn({ action: 'set', id, ...row, image }); setFile(null); setMsg('נשמר'); load();
+    } catch (e) { setMsg((e as Error).message); }
+  };
+  if (state === 'load') return <div className="words"><p className="hint">טוען</p></div>;
+  if (state === 'locked') return <div className="words"><p>המקור פרטי ולכן נעול עד שמוגדרת סיסמת עורכת.</p><p className="hint">להגדרה: הסוד MO_OWNER_KEY בפונקציות של cultura-GH. אחר כך נכנסים לסטודיו עם הסיסמה והמקור נפתח.</p></div>;
+  if (state === 'owner') return <div className="words"><Gate onOk={load} /></div>;
+  return (
+    <div className="words">
+      <div>
+        <label>שם היצירה</label><input className="field" value={row.title} onChange={(e) => setRow({ ...row, title: e.target.value })} />
+        <label>יוצר או יוצרת</label><input className="field" value={row.author} onChange={(e) => setRow({ ...row, author: e.target.value })} />
+        <label>מילות השיר</label><textarea className="field" rows={14} value={row.body} onChange={(e) => setRow({ ...row, body: e.target.value })} />
+        <label>קובץ המקור (תמונה או PDF)</label>
+        <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        {imageUrl && <a className="btn quiet" href={imageUrl} target="_blank" rel="noreferrer">פתיחת הקובץ השמור</a>}
+        <span className="hint">פרטי: רק עם סיסמת העורכת. לא מופיע בבית, במסלול ובקישורי שיתוף.</span>
+        <button className="dot" onClick={save}><i aria-hidden="true" />שמירת המקור</button> <span className="saved" role="status">{msg}</span>
+      </div>
+    </div>
+  );
+}
+
 const SUNO = /^https:\/\/(www\.)?suno\.com\//;
 function Sound({ c, apply, flash }: { c: Collection; apply: (f: (c: Collection) => Collection) => void; flash: (m: string) => void }) {
   const st = c.soundtrack ?? {};
@@ -338,7 +375,7 @@ function Sound({ c, apply, flash }: { c: Collection; apply: (f: (c: Collection) 
 }
 
 function Editor({ c, apply, onDelete, canDraft }: { c: Collection; apply: (f: (c: Collection) => Collection) => void; onDelete: () => void; canDraft: boolean }) {
-  const [msg, setMsg] = useState(''); const [tab, setTab] = useState<'prod' | 'text' | 'sound'>(location.hash.includes('tab=sound') ? 'sound' : 'prod');
+  const [msg, setMsg] = useState(''); const [tab, setTab] = useState<'prod' | 'text' | 'sound' | 'src'>(location.hash.includes('tab=sound') ? 'sound' : 'prod');
   const flash = useCallback((m: string) => { setMsg(m); window.setTimeout(() => setMsg(''), 2600); }, []);
   const save = async (p: () => Promise<unknown>) => { setMsg('שומר'); try { await p(); setMsg('נשמר'); } catch (e) { setMsg((e as Error).message); } };
   const patchC = (p: Partial<Collection>) => { apply((x) => ({ ...x, ...p })); save(() => studio({ action: 'update_collection', id: c.id, patch: p })); };
@@ -394,10 +431,10 @@ function Editor({ c, apply, onDelete, canDraft }: { c: Collection; apply: (f: (c
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={tab === 'prod'} className={tab === 'prod' ? 'on' : ''} onClick={() => setTab('prod')}>קו הייצור</button>
         <button role="tab" aria-selected={tab === 'text'} className={tab === 'text' ? 'on' : ''} onClick={() => setTab('text')}>הקולקציה במילים</button>
+        <button role="tab" aria-selected={tab === 'src'} className={tab === 'src' ? 'on' : ''} onClick={() => setTab('src')}>מקור ההשראה</button>
         <button role="tab" aria-selected={tab === 'sound'} className={tab === 'sound' ? 'on' : ''} onClick={() => setTab('sound')}>פס קול</button>
       </div>
-
-      {tab === 'sound' ? <Sound c={c} apply={apply} flash={flash} /> : tab === 'prod' ? (
+      {tab === 'src' ? <SourcePanel id={c.id} /> : tab === 'sound' ? <Sound c={c} apply={apply} flash={flash} /> : tab === 'prod' ? (
         <div className="lanes">{c.looks.map((l) => <Lane key={l.id} c={c} l={l} patch={patchL(l)} setMedia={setMedia(l)} flash={flash} canDraft={canDraft} move={move} />)}</div>
       ) : (
         <div className="words">

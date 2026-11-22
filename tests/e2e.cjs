@@ -75,7 +75,7 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
         ok(!(await page.locator('header >> text=העתקת קישור').first().isVisible().catch(() => false)), `${tag}: אין כפתורי פיתוח חופשיים בסרגל`);
       }
       const text = await page.evaluate(() => document.body.innerText);
-      ok(!/יעל|קלו מור|מאיפה את מתחילה|שמלת נפש/.test(text), `${tag} ${name}: אין רמז למקור ההשראה`);
+      ok(!/יעל|קלו מור|מאיפה את מתחילה|שמלת נפש|אהרן בס|עלית כבר, בן אדם/.test(text), `${tag} ${name}: אין רמז למקור ההשראה`);
     }
     if (tag === 'desk') {
       await page.goto(B + `#/studio/${ID}`); await page.waitForTimeout(1200);
