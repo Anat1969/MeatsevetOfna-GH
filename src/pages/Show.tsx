@@ -83,7 +83,10 @@ export function Show({ id, look }: { id?: string; look?: number }) {
 
   // The soundtrack leads: a curtain gives the browser its click, then the song sets the length of every shot.
   const audio = useRef<HTMLAudioElement>(null);
-  const track = c?.soundtrack?.audio_url;
+  // a file that does not play (a broken copy, a blocked address) falls back to the Suno tab, so the show is never silent without saying so
+  const [bad, setBad] = useState(false);
+  useEffect(() => setBad(false), [c?.id, c?.soundtrack?.audio_url]);
+  const track = bad ? undefined : c?.soundtrack?.audio_url;
   // no file (a private song in Suno): the music plays in a Suno tab, and the show keeps its time
   const suno = !track && c?.soundtrack?.suno_url ? c.soundtrack.suno_url : '';
   const [waiting, setWaiting] = useState(false);
@@ -180,7 +183,7 @@ export function Show({ id, look }: { id?: string; look?: number }) {
         </AnimatePresence>
       </div>
 
-      {track && <audio ref={audio} src={track} preload="auto" />}
+      {track && <audio ref={audio} src={track} preload="auto" onError={() => setBad(true)} />}
       {curtain && (
         <div className="curtain" role="dialog" aria-label="כניסה לתצוגה">
           <p className="kicker">{plain(c.name)}</p>
