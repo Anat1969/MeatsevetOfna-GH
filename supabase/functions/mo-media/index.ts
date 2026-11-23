@@ -57,11 +57,17 @@ async function mergeSound(cid: string, p: Row, allow: string[]) {
   if (clean.audio_url && !String(clean.audio_url).includes(`/${BUCKET}/c/${cid}/`)) return json({ error: "audio" }, 400);
   if (clean.audio_path && !String(clean.audio_path).startsWith(`c/${cid}/`)) return json({ error: "audio" }, 400);
   if ("duration" in clean) { const d = Number(clean.duration); if (!(d > 0 && d < 3600)) delete clean.duration; else clean.duration = Math.round(d * 10) / 10; }
-  if (clean.suno_url && !clean.audio_url) Object.assign(clean, await sunoImport(cid, String(clean.suno_url)).catch(() => ({ suno_state: "unknown" })));
+  const fromLink = !!clean.suno_url && !clean.audio_url;
+  if (fromLink) Object.assign(clean, await sunoImport(cid, String(clean.suno_url)).catch(() => ({ suno_state: "unknown" })));
   if (typeof clean.handoff === "string") { clean.handoff_hash = await sha(String(clean.handoff)); clean.handoff_at = new Date().toISOString(); delete clean.handoff; }
   const { data: c } = await sb.from("mo_collections").select("soundtrack").eq("id", cid).single();
   if (!c) return json({ error: "הקולקציה לא נמצאה." }, 404);
   const old = (c.soundtrack ?? {}) as Row;
+  // a link was read again: what an older link brought (a stored copy or a stream address) goes, so a new song never plays the old one
+  if (fromLink && (old.suno_state === "imported" || old.suno_state === "stream")) {
+    if (old.audio_path && old.audio_path !== clean.audio_path) await sb.storage.from(BUCKET).remove([String(old.audio_path)]);
+    delete old.audio_path; if (!clean.audio_url) { delete old.audio_url; delete old.duration; }
+  }
   if (clean.audio_path && old.audio_path && old.audio_path !== clean.audio_path) await sb.storage.from(BUCKET).remove([String(old.audio_path)]);
   if (clean.audio_url && !("duration" in clean)) delete old.duration;
   const next = { ...old, ...clean, updated_at: new Date().toISOString() };
@@ -92,13 +98,27 @@ async function sunoImport(cid: string, link: string): Promise<Row> {
     if (!a?.ok || !/audio|octet/.test(a.headers.get("content-type") ?? "")) continue;
     const buf = await a.arrayBuffer();
     if (buf.byteLength < 10000 || buf.byteLength > 40 * 1024 * 1024) continue;
+    if (!isAudio(new Uint8Array(buf, 0, 12))) continue; // Suno scrambles its audio files: a file that is not audio is not stored
     const ext = /\.m4a$|\.mp4$/.test(u) || /mp4/.test(a.headers.get("content-type") ?? "") ? "m4a" : "mp3";
     const path = `c/${cid}/soundtrack-suno-${Date.now()}.${ext}`;
     const up = await sb.storage.from(BUCKET).upload(path, buf, { contentType: ext === "mp3" ? "audio/mpeg" : "audio/mp4", cacheControl: "31536000" });
     if (up.error) throw new Error(up.error.message);
     return { ...out, suno_state: "imported", audio_url: sb.storage.from(BUCKET).getPublicUrl(path).data.publicUrl, audio_path: path, ...(dur > 0 ? { duration: out.suno_duration } : {}) };
   }
+  // the audio is protected, but a public song has an open share video (mp4 with the full sound): the show plays it straight from Suno
+  const video = String(clip?.video_url ?? "");
+  if (isPublic && new RegExp(`^https://cdn[0-9]?\\.suno\\.ai/${id}\\.mp4$`).test(video)) {
+    const v = await fetch(video, { headers: { "User-Agent": "Mozilla/5.0", Range: "bytes=0-11" }, signal: AbortSignal.timeout(20000) }).catch(() => null);
+    if (v?.ok && /video\/mp4/.test(v.headers.get("content-type") ?? "") && isAudio(new Uint8Array(await v.arrayBuffer()))) {
+      return { ...out, suno_state: "stream", audio_url: video, ...(dur > 0 ? { duration: out.suno_duration } : {}) };
+    }
+  }
   return { ...out, suno_state: isPublic ? "no_audio" : "private" };
+}
+/** The first bytes of a real sound file: MP4 / M4A (ftyp), MP3 (ID3 or a frame sync), OGG, WAV. */
+function isAudio(b: Uint8Array) {
+  const t = String.fromCharCode(...b.slice(0, 12));
+  return t.slice(4, 8) === "ftyp" || t.startsWith("ID3") || t.startsWith("OggS") || t.startsWith("RIFF") || (b[0] === 0xff && (b[1] & 0xe0) === 0xe0);
 }
 
 function safeUrl(u: string) {

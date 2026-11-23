@@ -15,6 +15,9 @@ export const isArticle = (c: Collection) => c.looks.length > 0 && c.looks.every(
 /** A smaller copy of a stored image (Supabase image rendering); any other address is left as it is. */
 export const small = (url: string, w: number) => (url.includes('/storage/v1/object/public/') ? `${url.replace('/object/public/', '/render/image/public/')}?width=${w}&resize=contain&quality=82` : url);
 
+/** The name of the downloaded file: the app and the collection, without niqqud or signs a file name cannot hold. */
+export const fileName = (c: Collection) => `מסלול - ${bare(plain(c.name)).replace(/[\\/:*?"<>|]/g, '').trim()}`;
+
 function Shot({ l, stage, w }: { l: Look; stage: Shot; w: number }) {
   const m = lead(l, stage);
   return m ? <img src={small(m.url, w)} alt="" /> : null;
@@ -143,9 +146,30 @@ export function Articles({ id }: { id?: string }) {
     const done = () => { document.body.classList.remove('print-one'); document.querySelectorAll('.art.only').forEach((e) => e.classList.remove('only')); };
     addEventListener('afterprint', done); return () => removeEventListener('afterprint', done);
   }, []);
+  // The file is the page itself: the sheet is drawn at print size and wrapped in a one-page A4 PDF, named after the collection.
+  const [saving, setSaving] = useState('');
+  const download = async (c: Collection) => {
+    const el = document.querySelector<HTMLElement>(`#a-${c.id} .sheet`); if (!el || saving) return;
+    setSaving(c.id);
+    const zoom = el.style.zoom;
+    try {
+      const [{ toJpeg }, { jsPDF }] = await Promise.all([import('html-to-image'), import('jspdf')]);
+      el.style.zoom = '1';
+      const data = await toJpeg(el, { pixelRatio: 2.5, quality: 0.92, backgroundColor: '#ffffff', cacheBust: true });
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+      pdf.addImage(data, 'JPEG', 0, 0, 210, 297);
+      const url = URL.createObjectURL(pdf.output('blob'));
+      const link = Object.assign(document.createElement('a'), { href: url, download: `${fileName(c)}.pdf` });
+      document.body.appendChild(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch { window.alert('ההורדה לא הצליחה. אפשר לשמור כ-PDF דרך כפתור ההדפסה.'); }
+    finally { el.style.zoom = zoom; setSaving(''); }
+  };
   const print = (cid?: string) => {
+    const one = cid ? arts.find((c) => c.id === cid) : undefined;
     if (cid) { document.body.classList.add('print-one'); document.getElementById(`a-${cid}`)?.classList.add('only'); }
-    window.print();
+    const title = document.title; document.title = one ? fileName(one) : 'מסלול - כל הכתבות';
+    window.print(); document.title = title;
   };
 
   return (
@@ -178,7 +202,8 @@ export function Articles({ id }: { id?: string }) {
           <section className="art" id={`a-${c.id}`} key={c.id}>
             <Sheet c={c} n={i + 1} />
             <div className="art-actions">
-              <button className="btn" onClick={() => print(c.id)}>הדפסה או שמירה כ-PDF</button>
+              <button className="btn" onClick={() => print(c.id)}>הדפסה</button>
+              <button className="btn" disabled={saving === c.id} onClick={() => void download(c)}>{saving === c.id ? 'מכינה את הקובץ' : `הורדה: ${fileName(c)}.pdf`}</button>
               <a className="btn" href={`#/show/${c.id}`}>לתצוגה</a>
               <a className="btn" href={`#/studio/${c.id}`}>לעריכה בסטודיו</a>
             </div>

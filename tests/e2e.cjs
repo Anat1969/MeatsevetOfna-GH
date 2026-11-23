@@ -118,7 +118,7 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       const brief = await page.locator('.sound textarea').inputValue();
       ok(brief.length > 80 && !/יעל|קלו מור|מאיפה את מתחילה|שמלת נפש/.test(brief), 'התדריך לפס הקול נכתב מהקולקציה ובלי רמז למקור');
       await page.evaluate(() => { window.open = (u) => { window.__opened = String(u); return null; }; });
-      await page.locator('.sound .dot').click();
+      await page.locator('.sound-brief .dot').click();
       const opened = await page.evaluate(() => window.__opened || '');
       ok(/[?&]key=[0-9a-f]{40}/.test(opened) && moves.some((m) => m.action === 'soundtrack' && /^[0-9a-f]{40}$/.test(m.patch?.handoff || '')), 'הקישור לפרטיטורה נושא מפתח חד־פעמי, והמפתח נשמר');
       ok(/^https:\/\/musicprompt-gh\.vercel\.app\/#\/create\?brief=.*&back=/.test(opened), `הכפתור פותח את פרטיטורה עם התדריך (${opened.slice(0, 60)})`);
@@ -198,6 +198,28 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     ok(errs.length === 0, `Suno: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();
   }
+  // the song link: its own place in the sound tab, an explicit save, and a clear state once the song is connected
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
+    await mock(ctx);
+    await ctx.route('**/functions/v1/mo-media', async (r) => {
+      const H = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
+      if (r.request().method() === 'OPTIONS') return r.fulfill({ status: 200, headers: H });
+      const b = JSON.parse(r.request().postData() || '{}'); moves.push(b);
+      return r.fulfill({ json: { soundtrack: { ...b.patch, ...(b.patch.suno_url ? { suno_state: 'stream', audio_url: `${S}song.mp4`, duration: 200 } : {}) } }, headers: H });
+    });
+    const page = await ctx.newPage();
+    const errs = []; page.on('pageerror', (e) => errs.push(e.message));
+    await page.goto(B + `#/studio/${ID}?tab=sound`); await page.waitForTimeout(2500);
+    const save = page.locator('.sound-link .dot');
+    ok(await page.locator('.sound-link input').isVisible() && await save.isDisabled(), 'פס קול: מקום משלו לקישור לשיר, והשמירה מחכה לקישור');
+    await page.locator('.sound-link input').fill('https://suno.com/s/abcDEF123'); await save.click(); await page.waitForTimeout(800);
+    ok(moves.some((m) => m.action === 'soundtrack' && m.patch && m.patch.suno_url === 'https://suno.com/s/abcDEF123'), 'פס קול: "שמירת הקישור" שומרת את הקישור לקולקציה');
+    ok(/השיר מחובר/.test(await page.locator('.sound-state').innerText()) && await page.locator('.sound-link a', { hasText: 'לתצוגה עם המוזיקה' }).isVisible(), 'פס קול: אחרי השמירה כתוב שהשיר מחובר, עם דרך לתצוגה');
+    await page.screenshot({ path: path.join(OUT, 'desk-sound-link.png') });
+    ok(errs.length === 0, `קישור לשיר: בלי שגיאות JS ${errs.join(' | ')}`);
+    await ctx.close();
+  }
   // articles: every collection whose looks all have a photograph is one A4 page, listed for reading and printing
   for (const [tag, vp] of [['מחשב', { width: 1440, height: 900 }], ['נייד', { width: 390, height: 844 }]]) {
     const ctx = await browser.newContext({ viewport: vp, deviceScaleFactor: 1 });
@@ -221,6 +243,12 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     ok(!/יעל|קלו מור|מאיפה את מתחילה|שמלת נפש/.test(await page.locator('main').innerText()), `${tag} כתבות: אין רמז למקור ההשראה`);
     await page.screenshot({ path: path.join(OUT, `${vp.width === 390 ? 'mobile' : 'desk'}-articles.png`) });
     if (vp.width === 1440) {
+      const dlBtn = page.locator('.art-actions button', { hasText: 'הורדה' }).first();
+      ok(/מסלול - .+\.pdf/.test(await dlBtn.innerText()), `כתבות: כפתור הורדה עם שם הקולקציה (${await dlBtn.innerText()})`);
+      const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), dlBtn.click()]);
+      const file = path.join(OUT, 'article.pdf'); await dl.saveAs(file);
+      const bytes = fs.readFileSync(file);
+      ok(bytes.slice(0, 5).toString() === '%PDF-' && bytes.length > 50000 && (bytes.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length === 1, `כתבות: ההורדה היא קובץ PDF של עמוד אחד (${Math.round(bytes.length / 1024)} ק"ב)`);
       const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
       const pages = (pdf.toString('latin1').match(/\/Type\s*\/Page[^s]/g) || []).length;
       ok(pages === 1, `כתבות: ההדפסה יוצאת עמוד A4 אחד לכתבה (${pages})`);

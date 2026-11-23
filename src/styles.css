@@ -741,3 +741,7 @@ footer.sh-run{padding:0 var(--m) 6mm}
   .sheet{zoom:1!important}
   body.print-one .art:not(.only){display:none!important}
 }
+.sound-link{grid-column:1/-1;padding-top:18px;box-shadow:0 -1px 0 var(--ink)}
+.sound-link-row{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+.sound-link-row .fld{flex:1;min-width:240px;text-align:left}
+.art-actions .dot{font-size:15px}

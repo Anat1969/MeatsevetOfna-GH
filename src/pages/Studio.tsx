@@ -327,8 +327,15 @@ function Sound({ c, apply, flash }: { c: Collection; apply: (f: (c: Collection) 
   const open = () => { const key = handoffKey(); put({ brief_he: brief, handoff: key }); window.open(partituraLink(c, brief, key), '_blank', 'noopener'); };
   const ch = choreography(st.duration ?? st.suno_duration);
   // a link saved before the server could read Suno: check it once
-  useEffect(() => { if (st.suno_url && !st.suno_state && !st.audio_url) void put({ suno_url: st.suno_url }); }, [c.id]);
+  useEffect(() => { if (st.suno_url && ((!st.suno_state && !st.audio_url) || st.suno_state === 'imported')) void put({ suno_url: st.suno_url }); }, [c.id]);
   const [checking, setChecking] = useState(false);
+  const [link, setLink] = useState(st.suno_url ?? '');
+  useEffect(() => setLink(st.suno_url ?? ''), [st.suno_url]);
+  const saveLink = async () => {
+    const t = link.trim();
+    if (!SUNO.test(t)) { flash('קישור Suno מתחיל ב-https://suno.com/'); return; }
+    setChecking(true); await put({ suno_url: t }); setChecking(false);
+  };
   const recheck = async () => { if (!st.suno_url) return; setChecking(true); await put({ suno_url: st.suno_url }); setChecking(false); };
   const file = async (f?: File | null) => {
     if (!f) return;
@@ -357,18 +364,28 @@ function Sound({ c, apply, flash }: { c: Collection; apply: (f: (c: Collection) 
           {busy ? 'מעלה' : st.audio_url ? 'החלפת קובץ' : 'העלאת קובץ שמע'}
           <input type="file" accept="audio/*" hidden onChange={(e) => file(e.target.files?.[0])} />
         </label>
-        <label>קישור לשיר ב-Suno</label>
-        <Field label="קישור Suno" v={st.suno_url ?? ''} on={(v) => { const t = v.trim(); if (!t || SUNO.test(t)) put({ suno_url: t }); else flash('קישור Suno מתחיל ב-https://suno.com/'); }} />
-        {st.suno_url && <a className="link" href={st.suno_url} target="_blank" rel="noreferrer">האזנה ב-Suno</a>}
-        {st.suno_url && !st.audio_url && (
+      </div>
+      <div className="sound-link">
+        <label>הקישור לשיר</label>
+        <p className="hint">מדביקים כאן את הקישור לשיר ב-Suno ושומרים. מהרגע הזה התצוגה מתחברת אליו לבד.</p>
+        <div className="sound-link-row">
+          <input aria-label="קישור Suno" className="fld" dir="ltr" placeholder="https://suno.com/s/..." value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void saveLink(); }} />
+          <button className="dot" disabled={checking || !link.trim() || (link.trim() === st.suno_url && !!st.audio_url)} onClick={() => void saveLink()}><i aria-hidden="true" />{checking ? 'מתחברת לשיר' : 'שמירת הקישור'}</button>
+        </div>
+        {st.suno_url && (
           <p className="sound-state">
-            {st.suno_state === 'private' ? <>השיר <b>פרטי</b> ב-Suno, ולכן אי אפשר לנגן אותו בתוך התצוגה. בינתיים התצוגה פותחת אותו בלשונית של Suno ורצה על האורך שלו{st.suno_duration ? ` (${Math.round(st.suno_duration)} שניות)` : ''}.<br />כדי שיתנגן בתוך התצוגה: ב-Suno הופכים את השיר לציבורי (Public), ואז "בדיקה מחדש".</>
-              : st.suno_state === 'no_audio' || st.suno_state === 'unknown' ? <>Suno לא נתן את קובץ השמע. התצוגה תפתח את השיר בלשונית של Suno.</>
-              : <>בודקת את הקישור ב-Suno.</>}
+            {st.audio_url && (st.suno_state === 'stream' || st.suno_state === 'imported') ? <><b>השיר מחובר.</b> הוא מתנגן בתוך התצוגה אחרי הלחיצה על "כניסה". אפשר לבדוק בנגן שלמעלה.</>
+              : st.audio_url ? <>לקולקציה יש קובץ שמע שהועלה, והוא זה שמתנגן בתצוגה.</>
+              : st.suno_state === 'private' ? <>השיר <b>פרטי</b> ב-Suno, ולכן אי אפשר לנגן אותו בתוך התצוגה. בינתיים "כניסה" פותחת אותו בלשונית של Suno, והתצוגה רצה על האורך שלו{st.suno_duration ? ` (${Math.round(st.suno_duration)} שניות)` : ''}.<br />כדי שיתנגן לבד: ב-Suno הופכים את השיר לציבורי (Public), ואז "בדיקה מחדש".</>
+              : st.suno_state === 'no_audio' || st.suno_state === 'unknown' ? <>הקישור נשמר, אבל Suno לא נתן את השמע. "כניסה" בתצוגה תפתח את השיר בלשונית של Suno, ולוחצים שם play.</>
+              : <>מתחברת לשיר ב-Suno.</>}
           </p>
         )}
-        {st.suno_url && st.suno_state === 'imported' && <p className="sound-state">השיר יובא מ-Suno ומתנגן בתוך התצוגה.</p>}
-        {st.suno_url && !st.audio_url && <button className="btn" disabled={checking} onClick={() => void recheck()}>{checking ? 'בודקת' : 'בדיקה מחדש'}</button>}
+        <div className="sound-act">
+          {st.suno_url && <a className="link" href={st.suno_url} target="_blank" rel="noreferrer">האזנה ב-Suno</a>}
+          {st.suno_url && !st.audio_url && <button className="btn" disabled={checking} onClick={() => void recheck()}>{checking ? 'בודקת' : 'בדיקה מחדש'}</button>}
+          {st.audio_url && <a className="btn" href={`#/show/${c.id}`}>לתצוגה עם המוזיקה</a>}
+        </div>
       </div>
     </div>
   );

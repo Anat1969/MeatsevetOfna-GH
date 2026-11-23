@@ -40,4 +40,4 @@ export const primary = (l: Look, kind: Media['kind']) => (kind === 'video' ? lea
 export const stageIndex = (s: Stage) => STAGES.findIndex((x) => x.id === s);
 export const accentOf = (c: Collection) => c.palette[4]?.hex ?? '#5E1F24';
 
-export type Soundtrack = { brief_he?: string; title?: string; suno_url?: string; song_id?: string; audio_url?: string; audio_path?: string; duration?: number; handoff_at?: string; suno_id?: string; suno_duration?: number; suno_state?: 'imported' | 'private' | 'no_audio' | 'unknown'; updated_at?: string };
+export type Soundtrack = { brief_he?: string; title?: string; suno_url?: string; song_id?: string; audio_url?: string; audio_path?: string; duration?: number; handoff_at?: string; suno_id?: string; suno_duration?: number; suno_state?: 'imported' | 'stream' | 'private' | 'no_audio' | 'unknown'; updated_at?: string };
