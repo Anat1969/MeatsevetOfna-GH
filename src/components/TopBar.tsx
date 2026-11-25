@@ -3,12 +3,12 @@ import { go, type Route } from '../router';
 
 declare global { namespace JSX { interface IntrinsicElements { 'ai-menu': Record<string, unknown> } } }
 
-const NAV: { r: Route['name']; label: string; href: string }[] = [
+const NAV: { r: Route['name']; label: string; xl?: string; href: string }[] = [
   { r: 'home', label: 'בית', href: '#/' },
   { r: 'studio', label: 'סטודיו', href: '#/studio' },
   { r: 'show', label: 'מסלול', href: '#/show' },
   { r: 'articles', label: 'כתבות', href: '#/articles' },
-  { r: 'sets', label: 'תפאורות 2026', href: '#/sets' },
+  { r: 'sets', label: 'תפאורות', xl: ' 2026', href: '#/sets' },
 ];
 
 export type MenuItem = { label: string; onSelect: () => void; pressed?: boolean };
@@ -26,7 +26,7 @@ export function TopBar({ route, items, status }: { route: Route; items?: MenuIte
       </a>
       <nav className="nav">
         {NAV.map((n) => (
-          <a key={n.r} href={n.href} className={route.name === n.r ? 'on' : ''} aria-current={route.name === n.r ? 'page' : undefined}>{n.label}</a>
+          <a key={n.r} href={n.href} className={route.name === n.r ? 'on' : ''} aria-current={route.name === n.r ? 'page' : undefined}>{n.label}{n.xl && <span className="xl">{n.xl}</span>}</a>
         ))}
       </nav>
       <ai-menu ref={ref} phone="" chat="https://claude.ai/code/session_01UBnSCJojRPTLhbYDZAQ84H"></ai-menu>
