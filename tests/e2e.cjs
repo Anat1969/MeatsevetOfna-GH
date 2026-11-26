@@ -129,7 +129,8 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     }
     // מדידה: a look with a magazine photo, her photo uploaded, one call to mo-fit, the result on the stage
     {
-      const sent = [];
+      const sent = []; let hf = 0;
+      await page.route(/hf\.space|huggingface\.co/, (r) => { hf++; r.abort(); });
       await page.route('**/functions/v1/mo-fit', async (r) => { sent.push(JSON.parse(r.request().postData() || '{}')); await new Promise((d) => setTimeout(d, 300)); r.fulfill({ json: { url: 'https://ktqmwpbzcnzkhjskqisy.supabase.co/storage/v1/object/public/mo-media/test/look3-fit.png' }, headers: { 'Access-Control-Allow-Origin': '*' } }); });
       await page.goto(B + '#/fit'); await page.waitForSelector('.fit-looks button');
       ok(await page.locator('.fit-head h1').innerText().then((t) => /נשים אמיתיות/.test(t)), `${tag} מדידה: החזון בכותרת`);
@@ -140,7 +141,7 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       await page.locator('.dot:has-text("מדידה")').click();
       await page.waitForSelector('.fit-out img[alt^="את בלוק"]', { timeout: 8000 });
       const b = sent[0] || {};
-      ok(sent.length === 1 && /^data:image\/jpeg;base64,/.test(b.photo || '') && /mo-media/.test(b.garment_url || '') && b.framing === 'face', `${tag} מדידה: צילום מוקטן וצילום המגזין של הלוק נשלחים פעם אחת`);
+      ok(sent.length === 1 && /^data:image\/jpeg;base64,/.test(b.photo || '') && /mo-media/.test(b.garment_url || '') && b.framing === 'body' && hf > 0, `${tag} מדידה: קודם המרחב החינמי, ואם הוא לא עונה, צילום מוקטן וצילום המגזין של הלוק נשלחים פעם אחת`);
       ok(/#\/fit\/[0-9a-f-]+\/\d/.test(page.url()), `${tag} מדידה: הלוק שנבחר נשמר בכתובת`);
       ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} מדידה: בלי גלילה אופקית אחרי התוצאה`);
       await page.screenshot({ path: path.join(OUT, `${tag}-fit-result.png`) });

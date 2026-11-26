@@ -3,6 +3,7 @@ import { fit, listCollections } from '../lib/api';
 import { lead, primary, type Collection, type Look } from '../lib/types';
 import { plain } from '../lib/text';
 import { go } from '../router';
+import { freeReason, freeTryOn } from '../lib/tryon';
 
 // מדידה: החזון להלביש נשים אמיתיות בבגדי הקולקציה.
 // שלושה צעדים על קווי בנייה: הבגד, את, מדידה. התמונה שלה מוקטנת בדפדפן, נשלחת פעם אחת ולא נשמרת.
@@ -43,7 +44,7 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
   const [cols, setCols] = useState<Collection[]>([]);
   const [pick, setPick] = useState<Pick | null>(null);
   const [photo, setPhoto] = useState('');
-  const [framing, setFraming] = useState<'face' | 'body'>('face');
+  const [framing, setFraming] = useState<'face' | 'body'>('body');
   const [cam, setCam] = useState(false);
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState('');
@@ -54,6 +55,8 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
   const back = useRef<HTMLInputElement>(null);
   const [bridge, setBridge] = useState(false);
   const [copied, setCopied] = useState('');
+  const [stage, setStage] = useState('');
+  const [via, setVia] = useState<'' | 'free' | 'server'>('');
 
   useEffect(() => { listCollections().then(setCols); }, []);
   const looks = useMemo(() => cols.flatMap((c) => c.looks.map((l) => {
@@ -87,13 +90,20 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
     if (!f.type.startsWith('image/')) { setMsg('צריך קובץ תמונה.'); return; }
     try { setPhoto(await fromFile(f)); setOut(''); setMsg(''); } catch { setMsg('התמונה לא נקראה. נסי קובץ JPG או PNG.'); }
   };
+  // 1. free: IDM-VTON on Hugging Face, from her browser (needs a body photo). 2. the server (Gemini, fal). 3. the hand bridge.
   const run = async () => {
     if (!pick || !photo) return;
-    setBusy(true); setMsg(''); setOut('');
+    setBusy(true); setMsg(''); setOut(''); setVia('');
+    const reasons: string[] = [];
+    if (framing === 'body') {
+      try { setStage('מדידה חינמית ב-Hugging Face. כחצי דקה.'); setOut(await freeTryOn(photo, pick.src, plain(pick.l.garment?.text) || plain(pick.l.name))); setVia('free'); setBusy(false); return; }
+      catch (e) { reasons.push(freeReason(e)); }
+    } else reasons.push('המדידה החינמית צריכה צילום של הגוף, לפחות מהמותניים ומעלה.');
     try {
+      setStage('הבד מונח על הגוף. כחצי דקה.');
       const r = await fit({ photo, garment_url: pick.src, garment: plain(pick.l.garment?.text), name: plain(pick.l.name), framing });
-      setOut(r.url);
-    } catch (e) { setMsg((e as Error).message); setBridge(true); }
+      setOut(r.url); setVia('server');
+    } catch (e) { reasons.push((e as Error).message); setMsg(reasons.join(' ')); setBridge(true); }
     setBusy(false);
   };
 
@@ -137,10 +147,10 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
             <span className="num">02</span>
             <h2>את</h2>
             <div className="fit-frame" role="group" aria-label="מה בתמונה">
-              <button className={framing === 'face' ? 'on' : ''} onClick={() => setFraming('face')}>פנים</button>
               <button className={framing === 'body' ? 'on' : ''} onClick={() => setFraming('body')}>גוף מלא</button>
+              <button className={framing === 'face' ? 'on' : ''} onClick={() => setFraming('face')}>פנים</button>
             </div>
-            <p className="hint">{framing === 'face' ? 'מהפנים נבנית דמות מלאה בפרופורציות טבעיות.' : 'צילום מלא, עומדת, באור יום, שומר על המבנה שלך.'}</p>
+            <p className="hint">{framing === 'face' ? 'מהפנים נבנית דמות מלאה, אבל רק בדרך בתשלום או בגשר ל-Gemini.' : 'עומדת, באור יום, מהמותניים ומעלה או גוף מלא. כך המדידה חינמית.'}</p>
             <div className="fit-src">
               {cam ? <button className="btn" onClick={snap}>צילום</button> : <button className="btn" onClick={openCam}>צילום עכשיו</button>}
               {cam && <button className="link" onClick={stopCam}>סגירת המצלמה</button>}
@@ -155,6 +165,7 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
             <button className="dot big" disabled={!pick || !photo || busy} onClick={run}><i aria-hidden="true" />{busy ? 'מלבישה…' : out ? 'מדידה נוספת' : 'מדידה'}</button>
             <p className="saved" role="status">{msg}</p>
             <p className="fit-note">הצילום שלך נשלח פעם אחת ליצירה, ולא נשמר באפליקציה.</p>
+            {via === 'free' && <p className="fit-note">נמדד בחינם ב-IDM-VTON, מודל פתוח (ECCV 2024) ב-Hugging Face. הוא מדויק בפלג הגוף העליון, ופחות בשמלות ארוכות.</p>}
             {(bridge || (photo && !out)) && pick && (
               <details className="fit-bridge" open={bridge}>
                 <summary>הדרך החינמית: מדידה ב-Gemini</summary>
@@ -178,7 +189,7 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
               : pick ? <img className="ghost" src={pick.src} alt="" />
               : null}
             {!out && !cam && !photo && <figcaption className="fit-empty">כאן תעמדי בבגד.</figcaption>}
-            {busy && <figcaption className="fit-busy">הבד מונח על הגוף. כחצי דקה.</figcaption>}
+            {busy && <figcaption className="fit-busy">{stage}</figcaption>}
           </figure>
           <div className="fit-pair">
             <figure><span className="num">הבגד</span>{pick && <img src={pick.src} alt={plain(pick.l.name)} />}<figcaption>{pick ? `${plain(pick.c.name)} · ${plain(pick.l.name)}` : ''}</figcaption></figure>
