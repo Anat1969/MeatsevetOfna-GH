@@ -64,7 +64,7 @@ const SWAPS: [string, string, (face: Blob, scene: Blob) => unknown[]][] = [
 ];
 async function swapFace(face: Blob, scene: Blob, why: string[]): Promise<string | null> {
   const token = Deno.env.get("HF_TOKEN")?.trim();
-  const end = Date.now() + 120000;
+  const end = Date.now() + 105000;
   for (const [space, ep, args] of SWAPS) {
     const left = end - Date.now();
     if (left < 15000) break;
@@ -83,6 +83,26 @@ async function swapFace(face: Blob, scene: Blob, why: string[]): Promise<string 
     }
   }
   return null;
+}
+
+// Gentle refinement of the face only (ענת, 26.11.2026: "מעודנות ומחמיאות, ממש בעדינות"). CodeFormer (sczhou/CodeFormer,
+// tested 26.11: 5 s, same size). Fidelity keeps her: 0.8 gentle, 0.6 soft. background_enhance off, so the garment and the
+// scene are not touched. A failure or no time left returns the image as it was: a result is never lost.
+async function refineFace(url: string, level: string, deadline: number): Promise<{ url: string; refined: boolean }> {
+  if (level !== "gentle" && level !== "soft") return { url, refined: false };
+  const left = deadline - Date.now();
+  if (left < 12000) return { url, refined: false };
+  try {
+    const img = dataBlob(url) ?? await (await fetch(url, { signal: AbortSignal.timeout(15000) })).blob();
+    const token = Deno.env.get("HF_TOKEN")?.trim();
+    const app = await within(Client.connect("sczhou/CodeFormer", token ? { hf_token: token as `hf_${string}` } : {}), Math.min(20000, left), "connect");
+    const r = await within(app.predict("/inference", [img, true, false, false, 1, level === "soft" ? 0.6 : 0.8]), Math.max(8000, deadline - Date.now()), "refine");
+    const out = ((r as { data: { url?: string }[] }).data ?? [])[0];
+    if (!out?.url) return { url, refined: false };
+    const f = await fetch(out.url, { signal: AbortSignal.timeout(15000) });
+    if (!f.ok) return { url, refined: false };
+    return { url: `data:${f.headers.get("content-type") ?? "image/png"};base64,${b64(new Uint8Array(await f.arrayBuffer()))}`, refined: true };
+  } catch (e) { console.log("fit refine", String((e as { message?: string })?.message ?? e).slice(0, 200)); return { url, refined: false }; }
 }
 
 function same(a: string, b: string) {
@@ -143,11 +163,12 @@ Deno.serve(async (req) => {
   hits.push(now);
 
   const why: string[] = [];
+  const deadline = now + 140000, level = s(b.refine) || "gentle";
   if (s(b.mode) === "scene") {
     const face = new Blob([Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0))], { type: `image/${m[1]}` });
     const scene = await (await fetch(garmentUrl, { signal: AbortSignal.timeout(20000) })).blob();
     const url = await swapFace(face, scene, why);
-    if (url) return json({ url, via: "swap" });
+    if (url) { const f = await refineFace(url, level, deadline); return json({ url: f.url, via: "swap", refined: f.refined }); }
   } else if (framing === "body") {
     try {
       const p34 = dataBlob(s(b.photo_34)), g34 = dataBlob(s(b.garment_34));
@@ -156,7 +177,8 @@ Deno.serve(async (req) => {
       const garm = g34 ?? await (await fetch(garmentUrl, { signal: AbortSignal.timeout(20000) })).blob();
       const line = (await garmentLine(garm, s(b.garment))) || s(b.name);
       console.log("fit free in", fitted, line);
-      return json({ url: await freeTryOn(human, garm, line, fitted), via: "free", garment_line: line });
+      const f = await refineFace(await freeTryOn(human, garm, line, fitted), level, deadline);
+      return json({ url: f.url, via: "free", garment_line: line, refined: f.refined });
     } catch (e) { const t = String((e as { message?: string })?.message ?? e); console.log("fit free", t.slice(0, 300)); why.push(/quota|exceeded/i.test(t) ? "free quota" : /timeout/.test(t) ? "free timeout" : /IndexError|pose|keypoint/i.test(t) ? "free no body" : "free error"); }
   } else if (s(b.mode) !== "scene") why.push("free needs body");
   // Gemini first (the free key the studio already uses), fal as the second road.

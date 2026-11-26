@@ -136,7 +136,7 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       ok(await page.locator('.fit-head h1').innerText().then((t) => /נשים אמיתיות/.test(t)), `${tag} מדידה: החזון בכותרת`);
       ok(await page.locator('.dot:has-text("מדידה")').isDisabled(), `${tag} מדידה: הכפתור סגור עד שיש צילום`);
       await page.locator('.fit-looks button').nth(1).click();
-      ok(await page.locator('.fit-frame button.on').innerText() === 'הפנים שלי בצילום', `${tag} מדידה: ברירת המחדל היא הפנים בצילום המגזין`);
+      ok(await page.locator('.fit-frame:not(.fit-refine) button.on').innerText() === 'הפנים שלי בצילום', `${tag} מדידה: ברירת המחדל היא הפנים בצילום המגזין`);
       await page.locator('.fit-frame button', { hasText: 'הבגד עליי' }).click();
       await page.locator('.fit-src input[type=file]').setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: shots[0] });
       await page.waitForSelector('.fit-pair img[alt="הצילום שלך"]');
@@ -168,6 +168,16 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       ok(swapSent.length === 1 && swapSent[0].mode === 'scene' && /mo-media/.test(swapSent[0].garment_url || ''), `${tag} מדידה: הפנים בצילום, צילום המגזין נשאר שלם ב-16:9`);
       ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} מדידה: בלי גלילה אופקית בצילום הרחב`);
       await page.screenshot({ path: path.join(OUT, `${tag}-fit-swap.png`) });
+      // my fittings: every result is kept on this device, and X removes it
+      ok(swapSent[0].refine === 'gentle', `${tag} מדידה: עידון הפנים העדין הוא ברירת המחדל`);
+      await page.waitForFunction(() => document.querySelectorAll('.fit-saved li').length >= 3, null, { timeout: 8000 });
+      const before = await page.locator('.fit-saved li').count();
+      await page.locator('.fit-saved .fit-x').first().click();
+      await page.waitForFunction((n) => document.querySelectorAll('.fit-saved li').length === n - 1, before);
+      await page.reload(); await page.waitForSelector('.fit-saved li');
+      ok(await page.locator('.fit-saved li').count() === before - 1, `${tag} מדידה: המדידות נשמרות (${before}), ו-X מוחק אחת גם אחרי רענון`);
+      await page.locator('.fit-saved').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(OUT, `${tag}-fit-saved.png`) });
     }
     ok(errs.length === 0, `${tag}: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();
