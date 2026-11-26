@@ -35,8 +35,11 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     haiku: seed.haiku, reading: seed.reading, signature: seed.signature, principles: seed.principles, palette: seed.palette, set_design: seed.set, looks: seed.looks.map(look) };
   const uploads = [];
   const moves = [];
+  // the real <ai-menu> when a local copy exists (tests/ai-menu.local.js), otherwise a minimal stand-in, so the test never depends on the network
+  const AI_MENU = path.join(__dirname, 'ai-menu.local.js');
+  const AI_MENU_STUB = "if(!customElements.get('ai-menu'))customElements.define('ai-menu',class extends HTMLElement{constructor(){super();this.attachShadow({mode:'open'}).innerHTML=\"<button class='logo' title=\\\"אד' ענת שטיבלמן A&I\\\" style='width:44px;height:44px'>A&amp;I</button>\";this.items=[];this.status=''}})";
   async function mock(ctx) {
-    await ctx.route('**/appofapp-gh.vercel.app/ai-menu.js', (r) => r.fulfill({ path: path.join(__dirname, 'ai-menu.local.js'), contentType: 'application/javascript' }));
+    await ctx.route('**/appofapp-gh.vercel.app/ai-menu.js', (r) => (fs.existsSync(AI_MENU) ? r.fulfill({ path: AI_MENU, contentType: 'application/javascript' }) : r.fulfill({ body: AI_MENU_STUB, contentType: 'application/javascript' })));
     await ctx.route('**/rest/v1/mo_collections*', (r) => r.fulfill({ json: [row] }));
     await ctx.route('**/rest/v1/mo_links*', (r) => r.fulfill({ json: [] }));
     await ctx.route('**/storage/v1/object/public/mo-media/**', (r) => { const n = Number((r.request().url().match(/look(\d)/) || [0, 1])[1]); r.fulfill({ body: shots[(n - 1) % 3], contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' } }); });
@@ -65,7 +68,7 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     await mock(ctx);
     const page = await ctx.newPage();
     const errs = []; page.on('pageerror', (e) => errs.push(e.message));
-    for (const [hash, name] of [['#/', 'home'], [`#/show/${ID}`, 'show'], [`#/show/${ID}/1`, 'show-look'], [`#/show/${ID}/3`, 'show-empty'], [`#/show/${ID}/4`, 'show-finale'], ['#/studio', 'studio'], [`#/studio/${ID}`, 'editor'], ['#/sets', 'sets']]) {
+    for (const [hash, name] of [['#/', 'home'], [`#/show/${ID}`, 'show'], [`#/show/${ID}/1`, 'show-look'], [`#/show/${ID}/3`, 'show-empty'], [`#/show/${ID}/4`, 'show-finale'], ['#/studio', 'studio'], [`#/studio/${ID}`, 'editor'], ['#/sets', 'sets'], ['#/fit', 'fit']]) {
       await page.goto(B + hash); await page.waitForTimeout(name.startsWith('show') ? 5200 : 3500);
       await page.screenshot({ path: path.join(OUT, `${tag}-${name}.png`) });
       const hs = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
@@ -123,6 +126,24 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       ok(/[?&]key=[0-9a-f]{40}/.test(opened) && moves.some((m) => m.action === 'soundtrack' && /^[0-9a-f]{40}$/.test(m.patch?.handoff || '')), 'הקישור לפרטיטורה נושא מפתח חד־פעמי, והמפתח נשמר');
       ok(/^https:\/\/musicprompt-gh\.vercel\.app\/#\/create\?brief=.*&back=/.test(opened), `הכפתור פותח את פרטיטורה עם התדריך (${opened.slice(0, 60)})`);
       await page.screenshot({ path: path.join(OUT, 'desk-sound.png') });
+    }
+    // מדידה: a look with a magazine photo, her photo uploaded, one call to mo-fit, the result on the stage
+    {
+      const sent = [];
+      await page.route('**/functions/v1/mo-fit', async (r) => { sent.push(JSON.parse(r.request().postData() || '{}')); await new Promise((d) => setTimeout(d, 300)); r.fulfill({ json: { url: 'https://ktqmwpbzcnzkhjskqisy.supabase.co/storage/v1/object/public/mo-media/test/look3-fit.png' }, headers: { 'Access-Control-Allow-Origin': '*' } }); });
+      await page.goto(B + '#/fit'); await page.waitForSelector('.fit-looks button');
+      ok(await page.locator('.fit-head h1').innerText().then((t) => /נשים אמיתיות/.test(t)), `${tag} מדידה: החזון בכותרת`);
+      ok(await page.locator('.dot:has-text("מדידה")').isDisabled(), `${tag} מדידה: הכפתור סגור עד שיש צילום`);
+      await page.locator('.fit-looks button').nth(1).click();
+      await page.locator('.fit-src input[type=file]').setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: shots[0] });
+      await page.waitForSelector('.fit-pair img[alt="הצילום שלך"]');
+      await page.locator('.dot:has-text("מדידה")').click();
+      await page.waitForSelector('.fit-out img[alt^="את בלוק"]', { timeout: 8000 });
+      const b = sent[0] || {};
+      ok(sent.length === 1 && /^data:image\/jpeg;base64,/.test(b.photo || '') && /mo-media/.test(b.garment_url || '') && b.framing === 'face', `${tag} מדידה: צילום מוקטן וצילום המגזין של הלוק נשלחים פעם אחת`);
+      ok(/#\/fit\/[0-9a-f-]+\/\d/.test(page.url()), `${tag} מדידה: הלוק שנבחר נשמר בכתובת`);
+      ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} מדידה: בלי גלילה אופקית אחרי התוצאה`);
+      await page.screenshot({ path: path.join(OUT, `${tag}-fit-result.png`) });
     }
     ok(errs.length === 0, `${tag}: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();
