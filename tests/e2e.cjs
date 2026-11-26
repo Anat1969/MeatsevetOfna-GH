@@ -164,7 +164,9 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     // מדידה: a look with a magazine photo, her photo uploaded, one call to mo-fit, the result on the stage
     {
       const sent = []; let hf = 0;
-      await page.route(/hf\.space|huggingface\.co/, (r) => { hf++; r.abort(); });
+      await page.route(/hf\.space/, (r) => { hf++; r.abort(); });
+      // the garment comes off the model in the browser: a stand-in clothes model marks the middle of the photo as the garment
+      await page.evaluate(() => { window.__moGarmentSeg = async () => { const n = 64, d = new Uint8Array(n * n); for (let y = 20; y < 52; y++) for (let x = 22; x < 42; x++) d[y * n + x] = 255; const f = new Uint8Array(n * n); for (let y = 6; y < 18; y++) for (let x = 26; x < 38; x++) f[y * n + x] = 255; return [{ label: 'Upper-clothes', mask: { data: d, width: n, height: n } }, { label: 'Face', mask: { data: f, width: n, height: n } }]; }; });
       await page.route('**/functions/v1/mo-fit', async (r) => { sent.push(JSON.parse(r.request().postData() || '{}')); await new Promise((d) => setTimeout(d, 300)); r.fulfill({ json: { url: 'https://ktqmwpbzcnzkhjskqisy.supabase.co/storage/v1/object/public/mo-media/test/look3-fit.png' }, headers: { 'Access-Control-Allow-Origin': '*' } }); });
       await page.goto(B + '#/fit'); await page.waitForSelector('.fit-looks button');
       ok(await page.locator('.fit-head h1').innerText().then((t) => /נשים אמיתיות/.test(t)), `${tag} מדידה: החזון בכותרת`);
@@ -172,12 +174,16 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       await page.locator('.fit-looks button').nth(1).click();
       ok(await page.locator('.fit-frame:not(.fit-refine) button.on').innerText() === 'הפנים שלי בצילום', `${tag} מדידה: ברירת המחדל היא הפנים בצילום המגזין`);
       await page.locator('.fit-frame button', { hasText: 'הבגד עליי' }).click();
+      await page.waitForSelector('.fit-cut img[alt^="הבגד של"]', { timeout: 8000 });
+      const cutSrc = await page.locator('.fit-cut img').getAttribute('src');
+      const cutPx = await page.evaluate(async (d) => { const i = new Image(); i.src = d; await i.decode(); const c = document.createElement('canvas'); c.width = i.naturalWidth; c.height = i.naturalHeight; const g = c.getContext('2d'); g.drawImage(i, 0, 0); const at = (x, y) => [...g.getImageData(x, y, 1, 1).data.slice(0, 3)]; return { w: c.width, h: c.height, corner: at(4, 4), top: at(c.width / 2, 12), mid: at(c.width / 2, c.height / 2) }; }, cutSrc);
+      ok(cutPx.w === 768 && cutPx.h === 1024 && cutPx.corner.every((v) => v > 245) && cutPx.top.every((v) => v > 245) && !cutPx.mid.every((v) => v > 245), `${tag} מדידה: הבגד חולץ מהדוגמנית, רק הבגד על לבן ב-768 על 1024, בלי הפנים`);
       await page.locator('.fit-src input[type=file]').setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: shots[0] });
       await page.waitForSelector('.fit-pair img[alt="הצילום שלך"]');
       await page.locator('.dot:has-text("מדידה")').click();
       await page.waitForSelector('.fit-out img[alt^="את בלוק"]', { timeout: 8000 });
       const b = sent[0] || {};
-      ok(sent.length === 1 && /^data:image\/jpeg;base64,/.test(b.photo || '') && /mo-media/.test(b.garment_url || '') && b.framing === 'body' && hf === 0 && /^data:image\/jpeg/.test(b.photo_34 || '') && /^data:image\/jpeg/.test(b.garment_34 || '') && await page.evaluate(async (d) => { const i = new Image(); i.src = d; await i.decode(); return i.naturalWidth === 768 && i.naturalHeight === 1024; }, b.photo_34), `${tag} מדידה: הכול עובר דרך השרת (המרחב החינמי רץ שם), צילום מוקטן וצילום המגזין של הלוק נשלחים פעם אחת, ושתי התמונות מוכנות למודל ב-768 על 1024`);
+      ok(sent.length === 1 && /^data:image\/jpeg;base64,/.test(b.photo || '') && /mo-media/.test(b.garment_url || '') && b.framing === 'body' && hf === 0 && /^data:image\/jpeg/.test(b.photo_34 || '') && b.garment_34 === cutSrc && await page.evaluate(async (d) => { const i = new Image(); i.src = d; await i.decode(); return i.naturalWidth === 768 && i.naturalHeight === 1024; }, b.photo_34), `${tag} מדידה: הכול עובר דרך השרת (המרחב החינמי רץ שם), צילום מוקטן והבגד שחולץ נשלחים פעם אחת, ושתי התמונות מוכנות למודל ב-768 על 1024`);
       ok(/#\/fit\/[0-9a-f-]+\/\d/.test(page.url()), `${tag} מדידה: הלוק שנבחר נשמר בכתובת`);
       ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} מדידה: בלי גלילה אופקית אחרי התוצאה`);
       await page.screenshot({ path: path.join(OUT, `${tag}-fit-result.png`) });
