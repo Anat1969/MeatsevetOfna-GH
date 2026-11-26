@@ -797,3 +797,11 @@ footer.sh-run{padding:0 var(--m) 6mm}
 /* six places in the bar on the phone: tighter, so all of them fit at 390 (26.11.2026) */
 @media (max-width:760px){.nav a{padding:8px 5px;font-size:13.5px}}
 @media (max-width:380px){.nav a{padding:8px 3px;font-size:13px}}
+.fit-bridge{padding-top:8px;box-shadow:0 -1px 0 var(--guide)}
+.fit-bridge summary{cursor:pointer;font:400 15px var(--sans);padding:8px 0}
+.fit-bridge ol{margin:4px 0 10px;padding-inline-start:20px;display:flex;flex-direction:column;gap:8px;font-size:14px;color:var(--mute)}
+.fit-order{width:100%;min-height:96px;border:0;box-shadow:inset 0 0 0 1px var(--guide);background:transparent;font:400 11.5px/1.55 var(--mono);color:var(--mute);padding:10px;resize:vertical;text-align:left}
+/* the stage never taller than the screen, so the steps and the bridge stay in view (26.11.2026) */
+.fit-out{width:min(100%,calc((100vh - 120px) * .75));justify-self:end}
+.fit-grid{align-items:start}.fit-stage{position:sticky;top:calc(var(--bar) + 16px)}
+@media (max-width:860px){.fit-stage{position:static}.fit-out{width:100%;justify-self:stretch}}

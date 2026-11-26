@@ -1,6 +1,6 @@
 // mo-fit: מדידה. אישה אמיתית בבגד מהקולקציה.
 // נכנסות שתי תמונות: הצילום שלה (פנים או גוף מלא) וצילום המגזין של הלוק. יוצאת תמונה אחת שלה בבגד.
-// הצילום שלה לא נשמר בשום מקום: הוא עובר ל-fal כ-data URI פעם אחת, והתוצאה חוזרת כקישור זמני של fal.
+// הצילום שלה לא נשמר בשום מקום: הוא עובר פעם אחת ל-Gemini (ובגיבוי ל-fal), והתוצאה חוזרת ישירות לדפדפן.
 // הרשאה: כמו mo-studio. כש-MO_OWNER_KEY מוגדר, צריך את הכותרת x-owner-key. בלעדיו: מגבלה שעתית.
 
 const CORS = {
@@ -13,6 +13,8 @@ const s = (v: unknown) => (typeof v === "string" ? v : "");
 const SB_HOST = "https://ktqmwpbzcnzkhjskqisy.supabase.co/storage/v1/";
 const HOURLY = 20;
 const hits: number[] = [];
+const GEMINI_IMAGE = [...new Set([Deno.env.get("GEMINI_IMAGE_MODEL") ?? "gemini-2.5-flash-image", "gemini-3-pro-image-preview", "gemini-2.5-flash-image-preview"])];
+function b64(u: Uint8Array) { let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); }
 
 function same(a: string, b: string) {
   if (!a || !b || a.length !== b.length) return false;
@@ -55,7 +57,7 @@ Deno.serve(async (req) => {
   const key = falKey();
   if (s(b.action) === "status") return json({ locked, ok: !locked || same(req.headers.get("x-owner-key") ?? "", owner), ready: !!key });
   if (locked && !same(req.headers.get("x-owner-key") ?? "", owner)) return json({ error: "המדידה פתוחה כרגע רק לעורכת. צריך את סיסמת העורכת." }, 401);
-  if (!key) return json({ error: "אין מפתח fal בפרויקט." }, 503);
+  if (!key && !Deno.env.get("GEMINI_API_KEY")) return json({ error: "אין מפתח ליצירת תמונה בפרויקט." }, 503);
 
   const now = Date.now();
   while (hits.length && now - hits[0] > 3_600_000) hits.shift();
@@ -71,16 +73,54 @@ Deno.serve(async (req) => {
   const text = prompt(s(b.garment).slice(0, 600), s(b.name).slice(0, 80), framing);
   hits.push(now);
 
-  for (const [endpoint, body] of [
-    ["https://fal.run/fal-ai/nano-banana-2/edit", { prompt: text, image_urls: [photo, garmentUrl], aspect_ratio: "3:4", num_images: 1, output_format: "jpeg" }],
-    ["https://fal.run/fal-ai/nano-banana/edit", { prompt: text, image_urls: [photo, garmentUrl], num_images: 1, output_format: "jpeg" }],
-  ] as const) {
+  const why: string[] = [];
+  // Gemini first (the free key the studio already uses), fal as the second road.
+  const g = Deno.env.get("GEMINI_API_KEY")?.trim();
+  if (g) {
     try {
-      const r = await fetch(endpoint, { method: "POST", headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(120000) });
-      if (!r.ok) { console.log("fit", endpoint, r.status, (await r.text()).slice(0, 300)); continue; }
-      const url = (await r.json())?.images?.[0]?.url;
-      if (url) return json({ url });
-    } catch (e) { console.log("fit", endpoint, String(e)); }
+      const gr = await fetch(garmentUrl, { signal: AbortSignal.timeout(20000) });
+      if (!gr.ok) throw new Error(`garment ${gr.status}`);
+      const gType = (gr.headers.get("content-type") ?? "image/jpeg").split(";")[0];
+      const gData = b64(new Uint8Array(await gr.arrayBuffer()));
+      for (const model of GEMINI_IMAGE) {
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${g}`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [
+              { text: "Image 1:" }, { inline_data: { mime_type: `image/${m[1]}`, data: m[2] } },
+              { text: "Image 2:" }, { inline_data: { mime_type: gType, data: gData } },
+              { text } ] }],
+            generationConfig: { responseModalities: ["TEXT", "IMAGE"], imageConfig: { aspectRatio: "3:4" } },
+          }),
+          signal: AbortSignal.timeout(110000),
+        });
+        if (!r.ok) { const t = (await r.text()).slice(0, 300); console.log("fit gemini", model, r.status, t); why.push(`gemini ${model} ${r.status}`); continue; }
+        const j = await r.json();
+        const part = (j?.candidates?.[0]?.content?.parts ?? []).find((p: { inlineData?: { data?: string }; inline_data?: { data?: string } }) => p.inlineData?.data || p.inline_data?.data);
+        const img = part?.inlineData ?? part?.inline_data;
+        if (img?.data) return json({ url: `data:${img.mimeType ?? img.mime_type ?? "image/png"};base64,${img.data}`, via: model });
+        console.log("fit gemini empty", model, JSON.stringify(j).slice(0, 300)); why.push(`gemini ${model} empty`);
+      }
+    } catch (e) { console.log("fit gemini", String(e)); why.push(String(e)); }
   }
-  return json({ error: "המדידה לא הצליחה הפעם. אפשר לנסות שוב, או לנסות צילום אחר באור טוב." }, 502);
+  if (key) {
+    for (const [endpoint, body] of [
+      ["https://fal.run/fal-ai/nano-banana-2/edit", { prompt: text, image_urls: [photo, garmentUrl], aspect_ratio: "3:4", num_images: 1, output_format: "jpeg" }],
+      ["https://fal.run/fal-ai/nano-banana/edit", { prompt: text, image_urls: [photo, garmentUrl], num_images: 1, output_format: "jpeg" }],
+    ] as const) {
+      try {
+        const r = await fetch(endpoint, { method: "POST", headers: { Authorization: `Key ${key}`, "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(120000) });
+        if (!r.ok) { const t = (await r.text()).slice(0, 300); console.log("fit", endpoint, r.status, t); why.push(/balance/i.test(t) ? "fal balance" : `fal ${r.status}`); continue; }
+        const url = (await r.json())?.images?.[0]?.url;
+        if (url) return json({ url, via: "fal" });
+      } catch (e) { console.log("fit", endpoint, String(e)); }
+    }
+  }
+  const quota = why.some((w) => / 429/.test(w)), balance = why.includes("fal balance");
+  return json({
+    error: quota && balance ? "המדידה לא רצה כרגע: המכסה החינמית של Gemini לתמונות נגמרה, והיתרה ב-fal נגמרה."
+      : balance ? "המדידה לא רצה כרגע: היתרה בחשבון fal נגמרה, ו-Gemini לא החזיר תמונה."
+      : "המדידה לא הצליחה הפעם. אפשר לנסות שוב, או צילום אחר באור טוב.",
+    why,
+  }, 502);
 });
