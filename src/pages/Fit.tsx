@@ -7,6 +7,21 @@ import { go } from '../router';
 // מדידה: החזון להלביש נשים אמיתיות בבגדי הקולקציה.
 // שלושה צעדים על קווי בנייה: הבגד, את, מדידה. התמונה שלה מוקטנת בדפדפן, נשלחת פעם אחת ולא נשמרת.
 
+/** The same instruction mo-fit sends, for the hand bridge. Keep the two in step. */
+export function fitPrompt(garment: string, name: string, framing: 'face' | 'body') {
+  return [
+    'Image 1 is a photograph of a real woman (me). Image 2 is a fashion editorial photograph of one garment from a collection.',
+    `Dress the woman from image 1 in exactly the garment worn in image 2${name ? ` (the look "${name}")` : ''}: the same cut, silhouette, fabric, colour, drape, seams and details.`,
+    garment ? `Garment notes: ${garment}.` : '',
+    'Keep her exactly as she is: her face, identity, expression, skin tone, hair, age and body shape. Do not beautify, slim, smooth or change her proportions. She is a real woman, not a model.',
+    framing === 'face'
+      ? 'Image 1 shows only her face, so create a natural full-length standing portrait of this same woman, with realistic everyday proportions, wearing the garment.'
+      : 'Keep her pose and framing close to image 1, full length where possible, so the whole garment is visible.',
+    'Background: plain warm paper-white studio wall, soft daylight from one side, a faint shadow on the floor. Documentary fashion photography, natural colour, 3:4 portrait.',
+    'Ignore the background, place and any other person of image 2. No text, no letters, no watermark.',
+  ].filter(Boolean).join(' ');
+}
+
 type Pick = { c: Collection; l: Look; src: string };
 const MAX = 1280;
 
@@ -36,6 +51,9 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const file = useRef<HTMLInputElement>(null);
+  const back = useRef<HTMLInputElement>(null);
+  const [bridge, setBridge] = useState(false);
+  const [copied, setCopied] = useState('');
 
   useEffect(() => { listCollections().then(setCols); }, []);
   const looks = useMemo(() => cols.flatMap((c) => c.looks.map((l) => {
@@ -75,9 +93,19 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
     try {
       const r = await fit({ photo, garment_url: pick.src, garment: plain(pick.l.garment?.text), name: plain(pick.l.name), framing });
       setOut(r.url);
-    } catch (e) { setMsg((e as Error).message); }
+    } catch (e) { setMsg((e as Error).message); setBridge(true); }
     setBusy(false);
   };
+
+  // the free road when the server has no image credit: the same request, by hand, in Gemini (like the Midjourney bridge)
+  const order = pick ? fitPrompt(plain(pick.l.garment?.text), plain(pick.l.name), framing) : '';
+  const copy = async () => { try { await navigator.clipboard.writeText(order); setCopied('ההוראה הועתקה'); } catch { setCopied('לא הועתק. אפשר לסמן את ההוראה ולהעתיק.'); } };
+  const fetchGarment = async () => {
+    if (!pick) return;
+    try { const b = await (await fetch(pick.src)).blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `בגד - ${plain(pick.l.name)}.${b.type.includes('png') ? 'png' : 'jpg'}`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
+    catch { window.open(pick.src, '_blank', 'noopener'); }
+  };
+  const onBack = async (f?: File) => { if (!f || !f.type.startsWith('image/')) return; setOut(await fromFile(f)); setMsg(''); };
 
   const step = photo ? (out ? 4 : 3) : pick ? 2 : 1;
   return (
@@ -127,6 +155,18 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
             <button className="dot big" disabled={!pick || !photo || busy} onClick={run}><i aria-hidden="true" />{busy ? 'מלבישה…' : out ? 'מדידה נוספת' : 'מדידה'}</button>
             <p className="saved" role="status">{msg}</p>
             <p className="fit-note">הצילום שלך נשלח פעם אחת ליצירה, ולא נשמר באפליקציה.</p>
+            {(bridge || (photo && !out)) && pick && (
+              <details className="fit-bridge" open={bridge}>
+                <summary>הדרך החינמית: מדידה ב-Gemini</summary>
+                <ol>
+                  <li><button className="link" onClick={fetchGarment}>הורדת צילום הבגד</button></li>
+                  <li><button className="link" onClick={copy}>העתקת ההוראה</button> <span className="saved">{copied}</span></li>
+                  <li><a className="link" href="https://gemini.google.com/app" target="_blank" rel="noopener noreferrer">פתיחת Gemini</a>, העלאת הצילום שלך וצילום הבגד, והדבקת ההוראה.</li>
+                  <li><button className="link" onClick={() => back.current?.click()}>העלאת התוצאה לבמה</button><input ref={back} type="file" accept="image/*" hidden onChange={(e) => { onBack(e.target.files?.[0]); e.target.value = ''; }} /></li>
+                </ol>
+                <textarea className="fit-order" readOnly value={order} dir="ltr" aria-label="ההוראה ל-Gemini" onFocus={(e) => e.currentTarget.select()} />
+              </details>
+            )}
           </div>
         </section>
 
@@ -144,7 +184,7 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
             <figure><span className="num">הבגד</span>{pick && <img src={pick.src} alt={plain(pick.l.name)} />}<figcaption>{pick ? `${plain(pick.c.name)} · ${plain(pick.l.name)}` : ''}</figcaption></figure>
             <figure><span className="num">את</span>{photo ? <img src={photo} alt="הצילום שלך" /> : <i className="fit-blank" />}<figcaption>{photo ? (framing === 'face' ? 'פנים' : 'גוף מלא') : 'עוד אין צילום'}</figcaption></figure>
           </div>
-          {out && <a className="btn" href={out} target="_blank" rel="noopener noreferrer">פתיחה בגודל מלא</a>}
+          {out && <a className="btn" href={out} download={`מדידה - ${pick ? plain(pick.l.name) : 'מסלול'}.jpg`} target="_blank" rel="noopener noreferrer">הורדת התמונה</a>}
         </section>
       </div>
     </main>

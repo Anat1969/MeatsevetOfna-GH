@@ -144,6 +144,17 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       ok(/#\/fit\/[0-9a-f-]+\/\d/.test(page.url()), `${tag} מדידה: הלוק שנבחר נשמר בכתובת`);
       ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} מדידה: בלי גלילה אופקית אחרי התוצאה`);
       await page.screenshot({ path: path.join(OUT, `${tag}-fit-result.png`) });
+      // no image credit on the server: the free bridge opens with the same instruction, and a result uploaded by hand lands on the stage
+      await page.unroute('**/functions/v1/mo-fit');
+      await page.route('**/functions/v1/mo-fit', (r) => r.fulfill({ status: 502, json: { error: 'המדידה לא רצה כרגע: המכסה החינמית של Gemini לתמונות נגמרה, והיתרה ב-fal נגמרה.' }, headers: { 'Access-Control-Allow-Origin': '*' } }));
+      await page.locator('.dot:has-text("מדידה")').click();
+      await page.waitForSelector('.fit-bridge[open]');
+      ok(/real woman/.test(await page.locator('.fit-order').inputValue()) && /מכסה/.test(await page.locator('.fit-steps .saved').first().innerText()), `${tag} מדידה: כשאין קרדיט, הסיבה כתובה והגשר ל-Gemini נפתח עם ההוראה`);
+      await page.locator('.fit-bridge input[type=file]').setInputFiles({ name: 'gemini.png', mimeType: 'image/png', buffer: shots[2] });
+      await page.waitForFunction(() => /^data:image\/jpeg/.test(document.querySelector('.fit-out img')?.getAttribute('src') || ''));
+      ok(true, `${tag} מדידה: התוצאה מ-Gemini עולה לבמה`);
+      ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} מדידה: בלי גלילה אופקית עם הגשר`);
+      await page.screenshot({ path: path.join(OUT, `${tag}-fit-bridge.png`) });
     }
     ok(errs.length === 0, `${tag}: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();
