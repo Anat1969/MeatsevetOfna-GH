@@ -15,6 +15,7 @@ const s = (v: unknown) => (typeof v === "string" ? v : "");
 const SB_HOST = "https://ktqmwpbzcnzkhjskqisy.supabase.co/storage/v1/";
 const HOURLY = 20;
 const hits: number[] = [];
+let waitH = 0; // hours until the free GPU quota renews, read from Hugging Face's own message
 const GEMINI_IMAGE = [...new Set([Deno.env.get("GEMINI_IMAGE_MODEL") ?? "gemini-2.5-flash-image", "gemini-3-pro-image-preview", "gemini-2.5-flash-image-preview"])];
 function b64(u: Uint8Array) { let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); }
 
@@ -33,11 +34,11 @@ async function garmentLine(garm: Blob, notes: string): Promise<string> {
     try {
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(12000),
-        body: JSON.stringify({ contents: [{ role: "user", parts: [{ inline_data: { mime_type: garm.type || "image/jpeg", data } }, { text: `Describe only the main garment the woman wears, for a virtual try-on model: type, length, cut, sleeves, neckline, fabric, colour and pattern. One line, at most 16 English words, no full stop, no person, no background.${notes ? ` Designer notes (Hebrew): ${notes.slice(0, 400)}` : ""}` }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 60 } }),
+        body: JSON.stringify({ contents: [{ role: "user", parts: [{ inline_data: { mime_type: garm.type || "image/jpeg", data } }, { text: `Describe only the main garment the woman wears, for a virtual try-on model: type, length, cut, sleeves, neckline, fabric, colour and pattern. Answer in English only (translate any Hebrew), one line, at most 16 words, no full stop, no person, no background.${notes ? ` Designer notes (Hebrew): ${notes.slice(0, 400)}` : ""}` }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 60 } }),
       });
       if (!r.ok) continue;
       const t = ((await r.json())?.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? "").join(" ").replace(/\s+/g, " ").trim();
-      if (t) return t.slice(0, 140);
+      if (t && !/[\u0590-\u05FF]/.test(t)) return t.slice(0, 140); // the model's text encoder reads English only
     } catch (_) { /* next */ }
   }
   return "";
@@ -62,9 +63,9 @@ const SWAPS: [string, string, (face: Blob, scene: Blob) => unknown[]][] = [
   ["tonyassi/face-swap", "/swap_faces", (f, t) => [f, t]],
   ["Dentro/face-swap", "/predict", (f, t) => [f, 1, t, 1]],
 ];
-async function swapFace(face: Blob, scene: Blob, why: string[]): Promise<string | null> {
+async function swapFace(face: Blob, scene: Blob, why: string[], until = Infinity): Promise<string | null> {
   const token = Deno.env.get("HF_TOKEN")?.trim();
-  const end = Date.now() + 105000;
+  const end = Math.min(Date.now() + 105000, until); // never past the request's own deadline
   for (const [space, ep, args] of SWAPS) {
     const left = end - Date.now();
     if (left < 15000) break;
@@ -79,6 +80,7 @@ async function swapFace(face: Blob, scene: Blob, why: string[]): Promise<string 
     } catch (e) {
       const t = String((e as { message?: string })?.message ?? e);
       console.log("fit swap", space, t.slice(0, 200));
+      const w = t.match(/again in (\d+):(\d+)/); if (w) waitH = Math.max(waitH, Number(w[1]) + (Number(w[2]) > 30 ? 1 : 0));
       why.push(/quota|exceeded/i.test(t) ? "swap quota" : /face|IndexError|NoneType/i.test(t) ? "swap no face" : /timeout/.test(t) ? "swap timeout" : "swap error");
     }
   }
@@ -163,6 +165,7 @@ Deno.serve(async (req) => {
   hits.push(now);
 
   const why: string[] = [];
+  waitH = 0;
   const deadline = now + 140000, level = s(b.refine) || "gentle";
   if (s(b.mode) === "scene") {
     const face = new Blob([Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0))], { type: `image/${m[1]}` });
@@ -179,8 +182,22 @@ Deno.serve(async (req) => {
       console.log("fit free in", fitted, line);
       const f = await refineFace(await freeTryOn(human, garm, line, fitted), level, deadline);
       return json({ url: f.url, via: "free", garment_line: line, refined: f.refined });
-    } catch (e) { const t = String((e as { message?: string })?.message ?? e); console.log("fit free", t.slice(0, 300)); why.push(/quota|exceeded/i.test(t) ? "free quota" : /timeout/.test(t) ? "free timeout" : /IndexError|pose|keypoint/i.test(t) ? "free no body" : "free error"); }
+    } catch (e) { const t = String((e as { message?: string })?.message ?? e); console.log("fit free", t.slice(0, 300)); const w = t.match(/again in (\d+):(\d+)/); if (w) waitH = Math.max(waitH, Number(w[1]) + (Number(w[2]) > 30 ? 1 : 0)); why.push(/quota|exceeded/i.test(t) ? "free quota" : /timeout/.test(t) ? "free timeout" : /IndexError|pose|keypoint/i.test(t) ? "free no body" : "free error"); }
   } else if (s(b.mode) !== "scene") why.push("free needs body");
+  // stability (ענת, 26.11.2026: "לא יציב"): "the garment on me" needs Hugging Face GPU time, which runs out; "the face in the
+  // photo" does not (tested with the quota spent: all three swaps and CodeFormer answered). So a dress fitting that cannot run
+  // falls back to the face in the magazine photo, and says so: there is always a picture.
+  if (s(b.mode) !== "scene") {
+    const face = new Blob([Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0))], { type: `image/${m[1]}` });
+    const scene = await (await fetch(garmentUrl, { signal: AbortSignal.timeout(20000) })).blob();
+    const url = await swapFace(face, scene, why, deadline - 10000);
+    if (url) {
+      const f = await refineFace(url, level, deadline);
+      const why1 = why.includes("free quota") ? `המכסה החינמית של Hugging Face נגמרה, והיא מתחדשת${waitH ? ` בעוד כ-${waitH} שעות` : " מחר"}`
+        : why.includes("free no body") ? "לא זוהה גוף בצילום" : "המרחב לא ענה הפעם";
+      return json({ url: f.url, via: "swap", refined: f.refined, fallback: true, note: `"הבגד עליי" לא רץ כרגע: ${why1}. בינתיים קיבלת את "הפנים שלי בצילום".` });
+    }
+  }
   // Gemini first (the free key the studio already uses), fal as the second road.
   const g = Deno.env.get("GEMINI_API_KEY")?.trim();
   if (g) {
@@ -224,10 +241,11 @@ Deno.serve(async (req) => {
     }
   }
   const quota = why.some((w) => / 429/.test(w)), balance = why.includes("fal balance");
+  const renew = waitH ? ` היא מתחדשת בעוד כ-${waitH} שעות.` : "";
   const lead = why.includes("swap no face") ? "לא זוהו פנים ברורות. צריך צילום שבו הפנים מול המצלמה, גלויות ומוארות. "
-    : why.includes("swap quota") ? "המכסה החינמית היומית של Hugging Face נגמרה. "
+    : why.includes("swap quota") ? `המכסה החינמית היומית של Hugging Face נגמרה.${renew} `
     : why.some((w) => w.startsWith("swap")) ? "המרחבים החינמיים להחלפת פנים לא ענו הפעם. אפשר לנסות שוב בעוד דקה. "
-    : why.includes("free quota") ? "המכסה החינמית היומית של Hugging Face נגמרה. "
+    : why.includes("free quota") ? `המכסה החינמית היומית של Hugging Face נגמרה.${renew} `
     : why.includes("free timeout") ? "המרחב החינמי ב-Hugging Face עמוס ולא ענה בזמן. אפשר לנסות שוב בעוד דקה. "
     : why.includes("free no body") ? "המרחב החינמי לא זיהה גוף בצילום. צריך צילום שבו את עומדת מול המצלמה, מהמותניים ומעלה או גוף מלא, באור טוב. "
     : why.includes("free error") ? "המרחב החינמי ב-Hugging Face לא ענה הפעם. "
@@ -237,5 +255,6 @@ Deno.serve(async (req) => {
       : balance ? "המדידה לא רצה כרגע: היתרה בחשבון fal נגמרה, ו-Gemini לא החזיר תמונה."
       : "המדידה לא הצליחה הפעם. אפשר לנסות שוב, או צילום אחר באור טוב."),
     why,
+    quota: why.includes("free quota") || why.includes("swap quota"),
   }, 502);
 });
