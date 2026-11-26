@@ -2,6 +2,8 @@
 // בכל תמונה יש את הפנים שלה, ולכן הכול סגור: טבלה mo_fits בלי מדיניות גישה ודלי mo-fits פרטי.
 // הגישה רק עם מפתח גלריה אישי שנוצר בדפדפן שלה (32 תווים). בשרת נשמר רק הגיבוב שלו (sha-256),
 // והתמונות נקראות בקישורים חתומים לשעה אחת.
+// הנשים שלי (ענת, 26.11.2026: "תיקייה עם תמונות של הנשים שלי... שמירה בשם ואז ניתן לחפש"): אותו מפתח, טבלה mo_women
+// בלי מדיניות גישה, והצילומים באותו דלי פרטי תחת owner/women/. נשמרת רק אישה ששמרו במפורש, בשם.
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
 const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
@@ -61,6 +63,42 @@ Deno.serve(async (req) => {
       if (!row) return json({ ok: true });
       await sb.storage.from(BUCKET).remove([row.path]);
       await sb.from("mo_fits").delete().eq("id", row.id).eq("owner", owner);
+      return json({ ok: true });
+    }
+    if (action === "women") {
+      const { data, error } = await sb.from("mo_women").select("id,name,path,created_at").eq("owner", owner).order("name").limit(500);
+      if (error) throw error;
+      const rows = data ?? [];
+      if (!rows.length) return json({ items: [] });
+      const { data: signed } = await sb.storage.from(BUCKET).createSignedUrls(rows.map((r) => r.path), 3600);
+      const url = new Map((signed ?? []).map((x) => [x.path, x.signedUrl]));
+      return json({ items: rows.map((r) => ({ id: r.id, name: r.name, url: url.get(r.path) ?? "", at: Date.parse(r.created_at) })).filter((x) => x.url) });
+    }
+
+    if (action === "woman_save") {
+      const name = s(b.name, 60).replace(/\s+/g, " ").trim();
+      if (!name) return json({ error: "צריך שם." }, 400);
+      const m = s(b.image, 12_000_000).match(/^data:(image\/(jpeg|png|webp));base64,(.+)$/s);
+      if (!m) return json({ error: "צריך תמונה." }, 400);
+      const bin = Uint8Array.from(atob(m[3]), (c) => c.charCodeAt(0));
+      if (bin.byteLength > 8_000_000) return json({ error: "התמונה גדולה מדי." }, 413);
+      const { count } = await sb.from("mo_women").select("id", { count: "exact", head: true }).eq("owner", owner);
+      if ((count ?? 0) >= 500) return json({ error: "יש כבר 500 נשים בתיקייה." }, 409);
+      const path = `${owner}/women/${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${m[2] === "jpeg" ? "jpg" : m[2]}`;
+      const up = await sb.storage.from(BUCKET).upload(path, bin, { contentType: m[1] });
+      if (up.error) throw up.error;
+      const { data, error } = await sb.from("mo_women").insert({ owner, name, path }).select("id,created_at").single();
+      if (error) throw error;
+      const { data: sg } = await sb.storage.from(BUCKET).createSignedUrl(path, 3600);
+      return json({ item: { id: data.id, name, url: sg?.signedUrl ?? "", at: Date.parse(data.created_at) } });
+    }
+
+    if (action === "woman_delete") {
+      const id = s(b.id, 40);
+      const { data: row } = await sb.from("mo_women").select("id,path").eq("owner", owner).eq("id", id).maybeSingle();
+      if (!row) return json({ ok: true });
+      await sb.storage.from(BUCKET).remove([row.path]);
+      await sb.from("mo_women").delete().eq("id", row.id).eq("owner", owner);
       return json({ ok: true });
     }
     return json({ error: "action" }, 400);
