@@ -8,6 +8,7 @@ const NAV: { r: Route['name']; label: string; xl?: string; href: string }[] = [
   { r: 'studio', label: 'סטודיו', href: '#/studio' },
   { r: 'show', label: 'מסלול', href: '#/show' },
   { r: 'articles', label: 'כתבות', href: '#/articles' },
+  { r: 'fit', label: 'מדידה', href: '#/fit' },
   { r: 'sets', label: 'תפאורות', xl: ' 2026', href: '#/sets' },
 ];
 

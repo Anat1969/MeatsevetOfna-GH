@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-export type Route = { name: 'home' | 'studio' | 'show' | 'sets' | 'articles'; id?: string; look?: number; q?: Record<string, string> };
+export type Route = { name: 'home' | 'studio' | 'show' | 'sets' | 'articles' | 'fit'; id?: string; look?: number; q?: Record<string, string> };
 export function parse(h: string): Route {
   const [path, query = ''] = h.replace(/^#/, '').split('?');
   const q = Object.fromEntries(new URLSearchParams(query));
@@ -7,6 +7,7 @@ export function parse(h: string): Route {
   if (a === 'studio') return { name: 'studio', id: b || undefined, q };
   if (a === 'show') return { name: 'show', id: b || undefined, look: c ? Number(c) : undefined };
   if (a === 'sets') return { name: 'sets' };
+  if (a === 'fit') return { name: 'fit', id: b || undefined, look: c ? Number(c) : undefined };
   if (a === 'articles') return { name: 'articles', id: b || undefined };
   return { name: 'home' };
 }
