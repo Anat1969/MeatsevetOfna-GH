@@ -136,6 +136,8 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       ok(await page.locator('.fit-head h1').innerText().then((t) => /נשים אמיתיות/.test(t)), `${tag} מדידה: החזון בכותרת`);
       ok(await page.locator('.dot:has-text("מדידה")').isDisabled(), `${tag} מדידה: הכפתור סגור עד שיש צילום`);
       await page.locator('.fit-looks button').nth(1).click();
+      ok(await page.locator('.fit-frame button.on').innerText() === 'הפנים שלי בצילום', `${tag} מדידה: ברירת המחדל היא הפנים בצילום המגזין`);
+      await page.locator('.fit-frame button', { hasText: 'הבגד עליי' }).click();
       await page.locator('.fit-src input[type=file]').setInputFiles({ name: 'me.png', mimeType: 'image/png', buffer: shots[0] });
       await page.waitForSelector('.fit-pair img[alt="הצילום שלך"]');
       await page.locator('.dot:has-text("מדידה")').click();
@@ -156,6 +158,16 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       ok(true, `${tag} מדידה: התוצאה מ-Gemini עולה לבמה`);
       ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} מדידה: בלי גלילה אופקית עם הגשר`);
       await page.screenshot({ path: path.join(OUT, `${tag}-fit-bridge.png`) });
+      // "the face in the photo": only her face goes into the magazine photo, which stays whole (16:9)
+      await page.unroute('**/functions/v1/mo-fit');
+      const swapSent = [];
+      await page.route('**/functions/v1/mo-fit', async (r) => { swapSent.push(JSON.parse(r.request().postData() || '{}')); r.fulfill({ json: { url: 'https://ktqmwpbzcnzkhjskqisy.supabase.co/storage/v1/object/public/mo-media/test/look1-swap.png', via: 'swap' }, headers: { 'Access-Control-Allow-Origin': '*' } }); });
+      await page.locator('.fit-frame button', { hasText: 'הפנים שלי בצילום' }).click();
+      await page.locator('.dot:has-text("מדידה")').click();
+      await page.waitForSelector('.fit-out.wide img[alt^="את בלוק"]', { timeout: 8000 });
+      ok(swapSent.length === 1 && swapSent[0].mode === 'scene' && /mo-media/.test(swapSent[0].garment_url || ''), `${tag} מדידה: הפנים בצילום, צילום המגזין נשאר שלם ב-16:9`);
+      ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} מדידה: בלי גלילה אופקית בצילום הרחב`);
+      await page.screenshot({ path: path.join(OUT, `${tag}-fit-swap.png`) });
     }
     ok(errs.length === 0, `${tag}: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();
