@@ -805,3 +805,6 @@ footer.sh-run{padding:0 var(--m) 6mm}
 .fit-out{width:min(100%,calc((100vh - 120px) * .75));justify-self:end}
 .fit-grid{align-items:start}.fit-stage{position:sticky;top:calc(var(--bar) + 16px)}
 @media (max-width:860px){.fit-stage{position:static}.fit-out{width:100%;justify-self:stretch}}
+/* "the face in the photo": the magazine photo stays whole, 16:9 (26.11.2026) */
+.fit-out.wide{aspect-ratio:16/9;width:100%;max-height:none}
+.fit-out.wide img{object-fit:contain;background:var(--paper)}

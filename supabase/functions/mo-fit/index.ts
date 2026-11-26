@@ -55,6 +55,36 @@ async function freeTryOn(photo: Blob, garm: Blob, line: string, fitted: boolean)
   return `data:${img.headers.get("content-type") ?? "image/png"};base64,${b64(new Uint8Array(await img.arrayBuffer()))}`;
 }
 
+// "The face in the photo" (ענת, 26.11.2026): the magazine photo stays whole, only her face goes in. Free open spaces, tested
+// 26.11: ovi054/face-swap-pro with its face enhancer (38 s), tonyassi/face-swap (12 s), Dentro/face-swap as the last.
+const SWAPS: [string, string, (face: Blob, scene: Blob) => unknown[]][] = [
+  ["ovi054/face-swap-pro", "/predict", (f, t) => [f, t, true]],
+  ["tonyassi/face-swap", "/swap_faces", (f, t) => [f, t]],
+  ["Dentro/face-swap", "/predict", (f, t) => [f, 1, t, 1]],
+];
+async function swapFace(face: Blob, scene: Blob, why: string[]): Promise<string | null> {
+  const token = Deno.env.get("HF_TOKEN")?.trim();
+  const end = Date.now() + 120000;
+  for (const [space, ep, args] of SWAPS) {
+    const left = end - Date.now();
+    if (left < 15000) break;
+    try {
+      const app = await within(Client.connect(space, token ? { hf_token: token as `hf_${string}` } : {}), Math.min(25000, left), "connect");
+      const r = await within(app.predict(ep, args(face, scene)), Math.max(10000, end - Date.now()), "swap");
+      const out = ((r as { data: { url?: string }[] }).data ?? [])[0];
+      if (!out?.url) throw new Error("swap empty");
+      const img = await fetch(out.url, { signal: AbortSignal.timeout(20000) });
+      if (!img.ok) throw new Error(`swap file ${img.status}`);
+      return `data:${img.headers.get("content-type") ?? "image/png"};base64,${b64(new Uint8Array(await img.arrayBuffer()))}`;
+    } catch (e) {
+      const t = String((e as { message?: string })?.message ?? e);
+      console.log("fit swap", space, t.slice(0, 200));
+      why.push(/quota|exceeded/i.test(t) ? "swap quota" : /face|IndexError|NoneType/i.test(t) ? "swap no face" : /timeout/.test(t) ? "swap timeout" : "swap error");
+    }
+  }
+  return null;
+}
+
 function same(a: string, b: string) {
   if (!a || !b || a.length !== b.length) return false;
   let d = 0;
@@ -113,7 +143,12 @@ Deno.serve(async (req) => {
   hits.push(now);
 
   const why: string[] = [];
-  if (framing === "body") {
+  if (s(b.mode) === "scene") {
+    const face = new Blob([Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0))], { type: `image/${m[1]}` });
+    const scene = await (await fetch(garmentUrl, { signal: AbortSignal.timeout(20000) })).blob();
+    const url = await swapFace(face, scene, why);
+    if (url) return json({ url, via: "swap" });
+  } else if (framing === "body") {
     try {
       const p34 = dataBlob(s(b.photo_34)), g34 = dataBlob(s(b.garment_34));
       const fitted = !!(p34 && g34);
@@ -123,7 +158,7 @@ Deno.serve(async (req) => {
       console.log("fit free in", fitted, line);
       return json({ url: await freeTryOn(human, garm, line, fitted), via: "free", garment_line: line });
     } catch (e) { const t = String((e as { message?: string })?.message ?? e); console.log("fit free", t.slice(0, 300)); why.push(/quota|exceeded/i.test(t) ? "free quota" : /timeout/.test(t) ? "free timeout" : /IndexError|pose|keypoint/i.test(t) ? "free no body" : "free error"); }
-  } else why.push("free needs body");
+  } else if (s(b.mode) !== "scene") why.push("free needs body");
   // Gemini first (the free key the studio already uses), fal as the second road.
   const g = Deno.env.get("GEMINI_API_KEY")?.trim();
   if (g) {
@@ -167,7 +202,10 @@ Deno.serve(async (req) => {
     }
   }
   const quota = why.some((w) => / 429/.test(w)), balance = why.includes("fal balance");
-  const lead = why.includes("free quota") ? "המכסה החינמית היומית של Hugging Face נגמרה. "
+  const lead = why.includes("swap no face") ? "לא זוהו פנים ברורות. צריך צילום שבו הפנים מול המצלמה, גלויות ומוארות. "
+    : why.includes("swap quota") ? "המכסה החינמית היומית של Hugging Face נגמרה. "
+    : why.some((w) => w.startsWith("swap")) ? "המרחבים החינמיים להחלפת פנים לא ענו הפעם. אפשר לנסות שוב בעוד דקה. "
+    : why.includes("free quota") ? "המכסה החינמית היומית של Hugging Face נגמרה. "
     : why.includes("free timeout") ? "המרחב החינמי ב-Hugging Face עמוס ולא ענה בזמן. אפשר לנסות שוב בעוד דקה. "
     : why.includes("free no body") ? "המרחב החינמי לא זיהה גוף בצילום. צריך צילום שבו את עומדת מול המצלמה, מהמותניים ומעלה או גוף מלא, באור טוב. "
     : why.includes("free error") ? "המרחב החינמי ב-Hugging Face לא ענה הפעם. "
