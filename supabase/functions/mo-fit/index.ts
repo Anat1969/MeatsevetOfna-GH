@@ -1,7 +1,9 @@
 // mo-fit: מדידה. אישה אמיתית בבגד מהקולקציה.
 // נכנסות שתי תמונות: הצילום שלה (פנים או גוף מלא) וצילום המגזין של הלוק. יוצאת תמונה אחת שלה בבגד.
-// הצילום שלה לא נשמר בשום מקום: הוא עובר פעם אחת ל-Gemini (ובגיבוי ל-fal), והתוצאה חוזרת ישירות לדפדפן.
+// הצילום שלה לא נשמר בשום מקום: הוא עובר פעם אחת ל-IDM-VTON החינמי (ובגיבוי ל-Gemini ול-fal), והתוצאה חוזרת ישירות לדפדפן.
 // הרשאה: כמו mo-studio. כש-MO_OWNER_KEY מוגדר, צריך את הכותרת x-owner-key. בלעדיו: מגבלה שעתית.
+
+import { Client } from "npm:@gradio/client@2.8.0";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -15,6 +17,22 @@ const HOURLY = 20;
 const hits: number[] = [];
 const GEMINI_IMAGE = [...new Set([Deno.env.get("GEMINI_IMAGE_MODEL") ?? "gemini-2.5-flash-image", "gemini-3-pro-image-preview", "gemini-2.5-flash-image-preview"])];
 function b64(u: Uint8Array) { let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); }
+
+// Free first: the open IDM-VTON space on Hugging Face (no key, no account). Tested 26.11.2026: an image in 26 s.
+// Needs a body photo; strongest on the upper body. A HF_TOKEN secret (free account) raises the GPU quota, optional.
+const FREE_SPACE = "yisol/IDM-VTON";
+const within = <T>(p: Promise<T>, ms: number, what: string) => Promise.race([p, new Promise<T>((_, no) => setTimeout(() => no(new Error(`${what} timeout`)), ms))]);
+async function freeTryOn(photo: Blob, garmentUrl: string, garment: string): Promise<string> {
+  const garm = await (await fetch(garmentUrl, { signal: AbortSignal.timeout(20000) })).blob();
+  const token = Deno.env.get("HF_TOKEN")?.trim();
+  const app = await within(Client.connect(FREE_SPACE, token ? { hf_token: token as `hf_${string}` } : {}), 30000, "connect");
+  const r = await within(app.predict("/tryon", [{ background: photo, layers: [], composite: null }, garm, garment.slice(0, 120) || "garment", true, true, 30, Math.floor(Math.random() * 1e6)]), 100000, "tryon");
+  const out = ((r as { data: { url?: string }[] }).data ?? [])[0];
+  if (!out?.url) throw new Error("tryon empty");
+  const img = await fetch(out.url, { signal: AbortSignal.timeout(20000) });
+  if (!img.ok) throw new Error(`tryon file ${img.status}`);
+  return `data:${img.headers.get("content-type") ?? "image/png"};base64,${b64(new Uint8Array(await img.arrayBuffer()))}`;
+}
 
 function same(a: string, b: string) {
   if (!a || !b || a.length !== b.length) return false;
@@ -74,6 +92,12 @@ Deno.serve(async (req) => {
   hits.push(now);
 
   const why: string[] = [];
+  if (framing === "body") {
+    try {
+      const bin = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
+      return json({ url: await freeTryOn(new Blob([bin], { type: `image/${m[1]}` }), garmentUrl, s(b.garment) || s(b.name)), via: "free" });
+    } catch (e) { const t = String((e as { message?: string })?.message ?? e); console.log("fit free", t.slice(0, 300)); why.push(/quota|exceeded/i.test(t) ? "free quota" : /timeout/.test(t) ? "free timeout" : "free error"); }
+  } else why.push("free needs body");
   // Gemini first (the free key the studio already uses), fal as the second road.
   const g = Deno.env.get("GEMINI_API_KEY")?.trim();
   if (g) {
@@ -117,10 +141,14 @@ Deno.serve(async (req) => {
     }
   }
   const quota = why.some((w) => / 429/.test(w)), balance = why.includes("fal balance");
+  const lead = why.includes("free quota") ? "המכסה החינמית היומית של Hugging Face נגמרה. "
+    : why.includes("free timeout") ? "המרחב החינמי ב-Hugging Face עמוס ולא ענה בזמן. אפשר לנסות שוב בעוד דקה. "
+    : why.includes("free error") ? "המרחב החינמי ב-Hugging Face לא ענה הפעם. "
+    : why.includes("free needs body") ? "המדידה החינמית צריכה צילום של הגוף, לפחות מהמותניים ומעלה. " : "";
   return json({
-    error: quota && balance ? "המדידה לא רצה כרגע: המכסה החינמית של Gemini לתמונות נגמרה, והיתרה ב-fal נגמרה."
+    error: lead + (quota && balance ? "המדידה לא רצה כרגע: המכסה החינמית של Gemini לתמונות נגמרה, והיתרה ב-fal נגמרה."
       : balance ? "המדידה לא רצה כרגע: היתרה בחשבון fal נגמרה, ו-Gemini לא החזיר תמונה."
-      : "המדידה לא הצליחה הפעם. אפשר לנסות שוב, או צילום אחר באור טוב.",
+      : "המדידה לא הצליחה הפעם. אפשר לנסות שוב, או צילום אחר באור טוב."),
     why,
   }, 502);
 });
