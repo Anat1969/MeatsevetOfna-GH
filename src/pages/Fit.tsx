@@ -4,6 +4,7 @@ import { lead, primary, type Collection, type Look } from '../lib/types';
 import { plain } from '../lib/text';
 import { adoptKey, listSaved, phoneLink, removeFit, saveFit, type Saved } from '../lib/fitGallery';
 import { go } from '../router';
+import { extractGarment } from '../lib/garment';
 
 // מדידה: החזון להלביש נשים אמיתיות בבגדי הקולקציה.
 // שלושה צעדים על קווי בנייה: הבגד, את, מדידה. התמונה שלה מוקטנת בדפדפן, נשלחת פעם אחת ולא נשמרת.
@@ -102,6 +103,22 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
     setPick(looks.find((p) => p.c.id === id && (!look || p.l.n === look)) ?? looks[0]);
   }, [looks, id, look, pick]);
   useEffect(() => () => stream.current?.getTracks().forEach((t) => t.stop()), []);
+  // "the garment on me": first the garment comes off the model (the inverse of taking a face), then it goes on her.
+  // Extracted in the browser as soon as the look and the mode are chosen, so it is ready (and shown) before she presses.
+  const [cut, setCut] = useState<{ src: string; url: string; state: 'busy' | 'ok' | 'fail' } | null>(null);
+  const cutFor = useRef('');
+  const cutP = useRef<Promise<string> | null>(null);
+  useEffect(() => {
+    if (mode !== 'dress' || !pick || cutFor.current === pick.src) return;
+    const src = pick.src; cutFor.current = src;
+    setCut({ src, url: '', state: 'busy' });
+    cutP.current = extractGarment(src);
+    cutP.current.then((url) => { if (cutFor.current === src) setCut({ src, url, state: 'ok' }); })
+      .catch(() => { if (cutFor.current === src) setCut({ src, url: '', state: 'fail' }); });
+  }, [mode, pick]);
+  const cutReady = mode === 'dress' && cut?.src === pick?.src && cut?.state === 'ok' ? cut.url : '';
+  // pressed while the garment is still coming off: wait for it (a failure only means the whole photo goes, as before)
+  const garmentCut = async () => (mode === 'dress' && pick && cutFor.current === pick.src && cutP.current ? cutP.current.catch(() => '') : '');
 
   const choose = (p: Pick) => { setPick(p); setOut(''); go(`#/fit/${p.c.id}/${p.l.n}`); };
   const stopCam = () => { stream.current?.getTracks().forEach((t) => t.stop()); stream.current = null; setCam(false); };
@@ -128,10 +145,11 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
   const run = async () => {
     if (!pick || !photo) return;
     setBusy(true); setMsg(''); setOut(''); setVia('');
-    setStage(mode === 'scene' ? 'הפנים שלך נכנסות לצילום. חצי דקה עד דקה.' : 'מדידה חינמית ב-Hugging Face. חצי דקה עד דקה.');
+    setStage(mode === 'scene' ? 'הפנים שלך נכנסות לצילום. חצי דקה עד דקה.' : 'הבגד שחולץ עובר אל הצילום שלך (Hugging Face, חינמי). חצי דקה עד דקה.');
     try {
       // exact 3:4 inputs for the free model (a failure here only means the server prepares them itself)
-      const [photo_34, garment_34] = framing === 'body' ? await Promise.all([to34(photo), to34(pick.src)]).catch(() => ['', '']) : ['', ''];
+      // the garment input is the extracted garment on white when it is ready, otherwise the whole magazine photo as before
+      const [photo_34, garment_34] = framing === 'body' ? await Promise.all([to34(photo), garmentCut().then((g) => g || to34(pick.src))]).catch(() => ['', '']) : ['', ''];
       const r = await fit({ photo, garment_url: pick.src, garment: plain(pick.l.garment?.text), name: plain(pick.l.name), framing, mode, refine, photo_34, garment_34 });
       setOut(r.url); remember(r.url, r.via === 'swap' ? 'scene' : mode); setVia(r.via === 'swap' ? 'swap' : r.via === 'free' ? 'free' : 'server'); if (r.note) setMsg(r.note);
     } catch (e) { setMsg((e as Error).message); setBridge(true); }
@@ -181,7 +199,7 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
               <button className={mode === 'scene' ? 'on' : ''} onClick={() => { setMode('scene'); setOut(''); }}>הפנים שלי בצילום</button>
               <button className={mode === 'dress' ? 'on' : ''} onClick={() => { setMode('dress'); setOut(''); }}>הבגד עליי</button>
             </div>
-            <p className="hint">{mode === 'scene' ? 'צילום המגזין נשאר שלם: הבגד, התנוחה והתפאורה. רק הפנים מתחלפות. מספיק צילום פנים ברור, מול המצלמה, באור טוב.' : 'הבגד עובר אל הצילום שלך. עומדת, באור יום, מהמותניים ומעלה או גוף מלא.'}</p>
+            <p className="hint">{mode === 'scene' ? 'צילום המגזין נשאר שלם: הבגד, התנוחה והתפאורה. רק הפנים מתחלפות. מספיק צילום פנים ברור, מול המצלמה, באור טוב.' : 'הבגד יורד מהדוגמנית, רק הבגד בלי הפנים, העור והרקע, ועובר אל הצילום שלך. עומדת, באור יום, מהמותניים ומעלה או גוף מלא.'}</p>
             <div className="fit-frame fit-refine" role="group" aria-label="עידון הפנים">
               <span className="hint">עידון הפנים</span>
               {([['natural', 'טבעי'], ['gentle', 'עדין'], ['soft', 'רך']] as const).map(([k, t]) => <button key={k} className={refine === k ? 'on' : ''} onClick={() => setRefine(k)}>{t}</button>)}
@@ -228,7 +246,11 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
             {busy && <figcaption className="fit-busy">{stage}</figcaption>}
           </figure>
           <div className="fit-pair">
-            <figure><span className="num">הבגד</span>{pick && <img src={pick.src} alt={plain(pick.l.name)} />}<figcaption>{pick ? `${plain(pick.c.name)} · ${plain(pick.l.name)}` : ''}</figcaption></figure>
+            {mode === 'dress' ? (
+              <figure className={`fit-cut${cut?.state === 'busy' ? ' busy' : ''}`}><span className="num">הבגד שחולץ</span>
+                {cutReady ? <img src={cutReady} alt={`הבגד של ${pick ? plain(pick.l.name) : ''}, בלי הדוגמנית`} /> : pick && <img className="ghost" src={pick.src} alt="" />}
+                <figcaption>{cutReady ? 'רק הבגד, בלי הדוגמנית' : cut?.state === 'busy' ? 'הבגד יורד מהדוגמנית...' : cut?.state === 'fail' ? 'הבגד לא חולץ. המדידה תעבוד מכל הצילום.' : ''}</figcaption></figure>
+            ) : <figure><span className="num">הבגד</span>{pick && <img src={pick.src} alt={plain(pick.l.name)} />}<figcaption>{pick ? `${plain(pick.c.name)} · ${plain(pick.l.name)}` : ''}</figcaption></figure>}
             <figure><span className="num">את</span>{photo ? <img src={photo} alt="הצילום שלך" /> : <i className="fit-blank" />}<figcaption>{photo ? (mode === 'scene' ? 'הפנים' : 'הגוף') : 'עוד אין צילום'}</figcaption></figure>
           </div>
           {out && <a className="btn" href={out} download={`מדידה - ${pick ? plain(pick.l.name) : 'מסלול'}.jpg`} target="_blank" rel="noopener noreferrer">הורדת התמונה</a>}
