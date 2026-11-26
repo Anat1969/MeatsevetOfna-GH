@@ -7,7 +7,7 @@ export type Saved = { id: string; at: number; url: string; look: string; collect
 
 const ANON = 'sb_publishable_IkreG7naPa1h-d4kGp1gpA_sLU4tg5q';
 const KEY = 'maslul.fitKey';
-const DB = 'maslul-fit', STORE = 'fits', MAX = 60;
+const DB = 'maslul-fit', STORE = 'fits', WOMEN = 'women', MAX = 60;
 
 /** The personal gallery key: made once on this device, carried to the phone by a link. */
 export function galleryKey(): string {
@@ -28,13 +28,13 @@ async function server<T>(body: Record<string, unknown>): Promise<T> {
 }
 
 const open = () => new Promise<IDBDatabase>((ok, no) => {
-  const r = indexedDB.open(DB, 1);
-  r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains(STORE)) r.result.createObjectStore(STORE, { keyPath: 'id' }); };
+  const r = indexedDB.open(DB, 2);
+  r.onupgradeneeded = () => { for (const n of [STORE, WOMEN]) if (!r.result.objectStoreNames.contains(n)) r.result.createObjectStore(n, { keyPath: 'id' }); };
   r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error);
 });
-const tx = async <T>(mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequest<T>) => {
+const tx = async <T>(mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequest<T>, store = STORE) => {
   const db = await open();
-  return new Promise<T>((ok, no) => { const q = f(db.transaction(STORE, mode).objectStore(STORE)); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); });
+  return new Promise<T>((ok, no) => { const q = f(db.transaction(store, mode).objectStore(store)); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); });
 };
 const localAll = async () => { try { return ((await tx('readonly', (s) => s.getAll())) as Saved[]); } catch { return []; } };
 const localDel = async (id: string) => { try { await tx('readwrite', (s) => s.delete(id)); } catch { /* gone */ } };
@@ -72,3 +72,34 @@ export async function removeFit(id: string) {
   if (id.startsWith('l-')) return localDel(id);
   try { await server({ action: 'delete', id }); } catch { /* tried */ }
 }
+
+// הנשים שלי (ענת, 26.11.2026: "תיקייה עם תמונות של הנשים שלי... שמירה בשם ואז ניתן לחפש את התמונה שלה ולהעלות אותה למסגרת").
+// אותו מפתח ואותו דלי פרטי. רק אישה שנשמרה במפורש, בשם. כשהשרת לא עונה היא נשמרת במכשיר ועולה בפעם הבאה.
+export type Woman = { id: string; name: string; url: string; at: number; local?: boolean };
+const wLocal = async () => { try { return ((await tx('readonly', (s) => s.getAll(), WOMEN)) as Woman[]); } catch { return []; } };
+const wDel = async (id: string) => { try { await tx('readwrite', (s) => s.delete(id), WOMEN); } catch { /* gone */ } };
+const wServer = async (w: { name: string; url: string }) => (await server<{ item: Woman }>({ action: 'woman_save', name: w.name, image: w.url })).item;
+export const byName = (a: Woman, b: Woman) => a.name.localeCompare(b.name, 'he');
+/** Search by name: any part of the name, ignoring case and extra spaces. */
+export const findWomen = (all: Woman[], q: string) => { const t = q.trim().toLowerCase().replace(/\s+/g, ' '); return t ? all.filter((w) => w.name.toLowerCase().includes(t)) : all; };
+
+export async function listWomen(): Promise<Woman[]> {
+  for (const w of await wLocal()) { try { await wServer(w); await wDel(w.id); } catch { break; } }
+  try { return (await server<{ items: Woman[] }>({ action: 'women' })).items.sort(byName); }
+  catch { return (await wLocal()).map((x) => ({ ...x, local: true })).sort(byName); }
+}
+export async function saveWoman(name: string, photo: string): Promise<Woman | null> {
+  const n = name.replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (!n || !photo.startsWith('data:image/')) return null;
+  try { return await wServer({ name: n, url: photo }); }
+  catch {
+    try { const w: Woman = { id: `l-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name: n, url: photo, at: Date.now(), local: true }; await tx('readwrite', (st) => st.put(w), WOMEN); return w; }
+    catch { return null; }
+  }
+}
+export async function removeWoman(id: string) {
+  if (id.startsWith('l-')) return wDel(id);
+  try { await server({ action: 'woman_delete', id }); } catch { /* tried */ }
+}
+/** A saved woman's photo back into the frame: as a data URI, like a fresh upload (the signed link expires in an hour). */
+export async function womanPhoto(w: Woman): Promise<string> { return keep(w.url); }

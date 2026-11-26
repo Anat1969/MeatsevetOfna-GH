@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { fit, listCollections } from '../lib/api';
 import { lead, primary, type Collection, type Look } from '../lib/types';
 import { plain } from '../lib/text';
-import { adoptKey, listSaved, phoneLink, removeFit, saveFit, type Saved } from '../lib/fitGallery';
+import { adoptKey, byName, findWomen, listSaved, listWomen, phoneLink, removeFit, removeWoman, saveFit, saveWoman, womanPhoto, type Saved, type Woman } from '../lib/fitGallery';
 import { go } from '../router';
 import { extractGarment } from '../lib/garment';
 
@@ -79,7 +79,30 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
     const g = location.hash.match(/[?&]g=([A-Za-z0-9_-]{32,80})/);
     if (g) { adoptKey(g[1]); history.replaceState(null, '', location.href.replace(/[?&]g=[A-Za-z0-9_-]+/, '')); }
     listSaved().then(setSaved);
+    listWomen().then(setWomen);
   }, []);
+  // הנשים שלי: a private folder of women saved by name, searched and put into the frame without uploading again
+  const [women, setWomen] = useState<Woman[]>([]);
+  const [folder, setFolder] = useState(false);
+  const [q, setQ] = useState('');
+  const [who, setWho] = useState(''); // the name of the woman in the frame, when she came from (or went into) the folder
+  const [newName, setNewName] = useState('');
+  const [wMsg, setWMsg] = useState('');
+  const shown = useMemo(() => findWomen(women, q), [women, q]);
+  const takeWoman = async (w: Woman) => {
+    try { setPhoto(await womanPhoto(w)); setWho(w.name); setOut(''); setMsg(''); setWMsg(''); setFolder(false); stopCam(); }
+    catch { setWMsg(`הצילום של ${w.name} לא נטען. נסי שוב.`); }
+  };
+  const keepWoman = async () => {
+    const it = await saveWoman(newName, photo);
+    if (!it) { setWMsg(newName.trim() ? 'הצילום לא נשמר הפעם.' : 'צריך שם.'); return; }
+    setWomen((x) => [...x.filter((w) => w.id !== it.id), it].sort(byName)); setWho(it.name); setNewName('');
+    setWMsg(`נשמרה בתיקייה בשם ${it.name}${it.local ? ', במכשיר הזה עד שהשרת יענה' : ''}.`);
+  };
+  const dropWoman = async (w: Woman) => {
+    if (!confirm(`למחוק את ${w.name} מהתיקייה? הצילום יימחק.`)) return;
+    await removeWoman(w.id); setWomen((x) => x.filter((i) => i.id !== w.id)); if (who === w.name) setWho('');
+  };
   const copyPhone = async () => { try { await navigator.clipboard.writeText(phoneLink()); setLinkMsg('הקישור הועתק. פותחים אותו פעם אחת בטלפון.'); } catch { setLinkMsg(phoneLink()); } };
   const remember = async (url: string, m: Saved['mode']) => { const it = await saveFit({ url, mode: m, look: pick ? plain(pick.l.name) : '', collection: pick ? plain(pick.c.name) : '' }); if (it) setSaved((x) => [it, ...x]); };
   const forget = async (id: string) => { await removeFit(id); setSaved((x) => x.filter((i) => i.id !== id)); };
@@ -134,12 +157,12 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
   const snap = async () => {
     const v = video.current; if (!v?.videoWidth) return;
     setPhoto(await shrink(v as unknown as HTMLCanvasElement, v.videoWidth, v.videoHeight, true));
-    setOut(''); stopCam();
+    setOut(''); setWho(''); setWMsg(''); stopCam();
   };
   const onFile = async (f?: File) => {
     if (!f) return;
     if (!f.type.startsWith('image/')) { setMsg('צריך קובץ תמונה.'); return; }
-    try { setPhoto(await fromFile(f)); setOut(''); setMsg(''); } catch { setMsg('התמונה לא נקראה. נסי קובץ JPG או PNG.'); }
+    try { setPhoto(await fromFile(f)); setOut(''); setMsg(''); setWho(''); setWMsg(''); } catch { setMsg('התמונה לא נקראה. נסי קובץ JPG או PNG.'); }
   };
   // mo-fit: 1. free IDM-VTON on Hugging Face (body photo), 2. Gemini, 3. fal. If all fail, the hand bridge.
   const run = async () => {
@@ -209,7 +232,33 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
               {cam && <button className="link" onClick={stopCam}>סגירת המצלמה</button>}
               <button className="link" onClick={() => file.current?.click()}>העלאת תמונה</button>
               <input ref={file} type="file" accept="image/*" capture="user" hidden onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
+              <button className="link" aria-expanded={folder} onClick={() => setFolder((x) => !x)}>{`הנשים שלי · ${women.length}`}</button>
             </div>
+            {folder && (
+              <div className="fit-women" role="region" aria-label="הנשים שלי">
+                <input type="search" className="fit-q" placeholder="חיפוש לפי שם" value={q} onChange={(e) => setQ(e.target.value)} aria-label="חיפוש אישה לפי שם" />
+                {women.length === 0 ? <p className="hint">עוד אין נשים בתיקייה. מצלמים או מעלים צילום, נותנים לו שם, ושומרים.</p>
+                  : shown.length === 0 ? <p className="hint">אין אישה בשם הזה.</p>
+                  : (
+                    <ul>
+                      {shown.map((w) => (
+                        <li key={w.id}>
+                          <button className="fit-woman" onClick={() => takeWoman(w)} aria-label={`הלבשה של ${w.name}`}><img src={w.url} alt="" loading="lazy" /><span>{w.name}</span></button>
+                          <button className="fit-x" onClick={() => dropWoman(w)} aria-label={`מחיקת ${w.name} מהתיקייה`}>×</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                <p className="fit-note">תיקייה פרטית: רק עם המפתח שלך, גם בטלפון דרך הקישור של הגלריה.</p>
+              </div>
+            )}
+            {photo && !who && !cam && (
+              <div className="fit-keep">
+                <input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') keepWoman(); }} placeholder="השם שלה" aria-label="שם לשמירה בתיקייה" maxLength={60} />
+                <button className="link" disabled={!newName.trim()} onClick={keepWoman}>שמירה בהנשים שלי</button>
+              </div>
+            )}
+            {(who || wMsg) && <p className="saved" role="status">{wMsg || `בתמונה: ${who}`}</p>}
           </div>
 
           <div className={`fit-step${step === 3 ? ' now' : ''}`}>
@@ -217,7 +266,7 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
             <h2>מדידה</h2>
             <button className="dot big" disabled={!pick || !photo || busy} onClick={run}><i aria-hidden="true" />{busy ? 'מלבישה…' : out ? 'מדידה נוספת' : 'מדידה'}</button>
             <p className="saved" role="status">{msg}</p>
-            <p className="fit-note">הצילום שלך נשלח פעם אחת ליצירה, ולא נשמר באפליקציה.</p>
+            <p className="fit-note">הצילום נשלח פעם אחת ליצירה, ולא נשמר, אלא אם שמרת אותו בשם בהנשים שלי (תיקייה פרטית).</p>
             {via === 'swap' && <p className="fit-note">הפנים הוחלפו בחינם במרחב פתוח ב-Hugging Face (InsightFace, עם שיפור פנים). שאר הצילום לא נגע.</p>}
             {via === 'free' && <p className="fit-note">נמדד בחינם ב-IDM-VTON, מודל פתוח (ECCV 2024) ב-Hugging Face. הוא מדויק בפלג הגוף העליון, ופחות בשמלות ארוכות.</p>}
             {(bridge || (photo && !out)) && pick && (
@@ -251,7 +300,7 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
                 {cutReady ? <img src={cutReady} alt={`הבגד של ${pick ? plain(pick.l.name) : ''}, בלי הדוגמנית`} /> : pick && <img className="ghost" src={pick.src} alt="" />}
                 <figcaption>{cutReady ? 'רק הבגד, בלי הדוגמנית' : cut?.state === 'busy' ? 'הבגד יורד מהדוגמנית...' : cut?.state === 'fail' ? 'הבגד לא חולץ. המדידה תעבוד מכל הצילום.' : ''}</figcaption></figure>
             ) : <figure><span className="num">הבגד</span>{pick && <img src={pick.src} alt={plain(pick.l.name)} />}<figcaption>{pick ? `${plain(pick.c.name)} · ${plain(pick.l.name)}` : ''}</figcaption></figure>}
-            <figure><span className="num">את</span>{photo ? <img src={photo} alt="הצילום שלך" /> : <i className="fit-blank" />}<figcaption>{photo ? (mode === 'scene' ? 'הפנים' : 'הגוף') : 'עוד אין צילום'}</figcaption></figure>
+            <figure><span className="num">את</span>{photo ? <img src={photo} alt="הצילום שלך" /> : <i className="fit-blank" />}<figcaption>{photo ? (who || (mode === 'scene' ? 'הפנים' : 'הגוף')) : 'עוד אין צילום'}</figcaption></figure>
           </div>
           {out && <a className="btn" href={out} download={`מדידה - ${pick ? plain(pick.l.name) : 'מסלול'}.jpg`} target="_blank" rel="noopener noreferrer">הורדת התמונה</a>}
         </section>

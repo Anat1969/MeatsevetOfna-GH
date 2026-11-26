@@ -41,12 +41,15 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
   async function mock(ctx) {
     await ctx.route('**/appofapp-gh.vercel.app/ai-menu.js', (r) => (fs.existsSync(AI_MENU) ? r.fulfill({ path: AI_MENU, contentType: 'application/javascript' }) : r.fulfill({ body: AI_MENU_STUB, contentType: 'application/javascript' })));
     // the private gallery (mo-fits): kept per test context, keyed like the real one
-    const fits = []; let fitN = 0;
+    const fits = [], women = []; let fitN = 0;
     await ctx.route('**/functions/v1/mo-fits', (r) => {
       const b = JSON.parse(r.request().postData() || '{}');
       if (!/^[A-Za-z0-9_-]{32,80}$/.test(b.key || '')) return r.fulfill({ status: 401, json: { error: 'key' } });
       if (b.action === 'save') { const it = { id: `f${++fitN}`, url: b.image, look: b.look, collection: b.collection, mode: b.mode, at: Date.now() + fitN }; fits.unshift(it); return r.fulfill({ json: { item: it } }); }
       if (b.action === 'delete') { const i = fits.findIndex((x) => x.id === b.id); if (i >= 0) fits.splice(i, 1); return r.fulfill({ json: { ok: true } }); }
+      if (b.action === 'women') return r.fulfill({ json: { items: [...women].sort((x, y) => x.name.localeCompare(y.name, 'he')) } });
+      if (b.action === 'woman_save') { if (!(b.name || '').trim() || !/^data:image\//.test(b.image || '')) return r.fulfill({ status: 400, json: { error: 'x' } }); const it = { id: `w${++fitN}`, name: b.name.trim(), url: b.image, at: Date.now() }; women.push(it); return r.fulfill({ json: { item: it } }); }
+      if (b.action === 'woman_delete') { const i = women.findIndex((x) => x.id === b.id); if (i >= 0) women.splice(i, 1); return r.fulfill({ json: { ok: true } }); }
       return r.fulfill({ json: { items: fits } });
     });
     await ctx.route('**/rest/v1/mo_collections*', (r) => r.fulfill({ json: [row] }));
@@ -222,6 +225,40 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       await phone.close();
       await page.locator('.fit-saved').scrollIntoViewIfNeeded();
       await page.screenshot({ path: path.join(OUT, `${tag}-fit-saved.png`) });
+      // הנשים שלי: a photo saved by name, found by search, and put back into the frame without uploading again
+      await page.evaluate(() => scrollTo(0, 0));
+      for (const [i, name] of [[1, 'דנה לוי'], [2, 'מיכל']]) {
+        await page.locator('.fit-src input[type=file]').setInputFiles({ name: `w${i}.png`, mimeType: 'image/png', buffer: shots[i] });
+        await page.waitForSelector('.fit-keep input');
+        await page.locator('.fit-keep input').fill(name);
+        await page.locator('.fit-keep button').click();
+        await page.waitForFunction((n) => !document.querySelector('.fit-keep') && document.body.innerText.includes(`נשמרה בתיקייה בשם ${n}`), name);
+      }
+      ok(!(await page.locator('.fit-keep').count()), `${tag} הנשים שלי: אחרי השמירה שורת השמירה נעלמת, והשם מוצג`);
+      await page.reload(); await page.waitForSelector('.fit-looks button');
+      await page.locator('.fit-src button', { hasText: 'הנשים שלי' }).click();
+      await page.waitForSelector('.fit-women li');
+      ok(await page.locator('.fit-women li').count() === 2 && /2/.test(await page.locator('.fit-src button', { hasText: 'הנשים שלי' }).innerText()), `${tag} הנשים שלי: שתי נשים בתיקייה אחרי רענון, והמספר ליד הכפתור`);
+      await page.locator('.fit-q').fill('דנה');
+      ok(await page.locator('.fit-women li').count() === 1 && await page.locator('.fit-women li').innerText().then((t) => t.includes('דנה לוי')), `${tag} הנשים שלי: חיפוש לפי חלק מהשם מוצא אותה`);
+      await page.locator('.fit-q').fill('אין כזאת');
+      ok(/אין אישה בשם הזה/.test(await page.locator('.fit-women').innerText()), `${tag} הנשים שלי: חיפוש בלי תוצאה כתוב`);
+      await page.locator('.fit-q').fill('דנה');
+      await page.locator('.fit-woman').first().click();
+      await page.waitForSelector('.fit-pair img[alt="הצילום שלך"]');
+      ok(await page.locator('.fit-pair figure').nth(1).locator('figcaption').innerText() === 'דנה לוי' && /^data:image\//.test(await page.locator('.fit-pair img[alt="הצילום שלך"]').getAttribute('src') || '') && !(await page.locator('.fit-keep').count()) && !(await page.locator('.fit-women').count()), `${tag} הנשים שלי: לחיצה מעלה אותה למסגרת בשמה, בלי העלאה מחדש`);
+      ok(!(await page.locator('.dot:has-text("מדידה")').isDisabled()), `${tag} הנשים שלי: אפשר להלביש אותה מיד`);
+      const phone2 = await ctx.newPage(); await phone2.goto(link); await phone2.waitForSelector('.fit-looks button');
+      await phone2.locator('.fit-src button', { hasText: 'הנשים שלי' }).click(); await phone2.waitForSelector('.fit-women li');
+      ok(await phone2.locator('.fit-women li').count() === 2, `${tag} הנשים שלי: אותה תיקייה בטלפון, דרך הקישור של הגלריה`);
+      await phone2.close();
+      await page.locator('.fit-src button', { hasText: 'הנשים שלי' }).click(); await page.locator('.fit-q').fill('');
+      await page.screenshot({ path: path.join(OUT, `${tag}-fit-women.png`) });
+      page.once('dialog', (d) => d.accept());
+      await page.locator('.fit-women .fit-x').first().click();
+      await page.waitForFunction(() => document.querySelectorAll('.fit-women li').length === 1);
+      ok(true, `${tag} הנשים שלי: X מוחק אישה מהתיקייה, אחרי אישור`);
+      ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} הנשים שלי: בלי גלילה אופקית`);
     }
     ok(errs.length === 0, `${tag}: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();
