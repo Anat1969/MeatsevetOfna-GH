@@ -34,6 +34,24 @@ async function shrink(src: CanvasImageSource & { width: number; height: number }
   g.drawImage(src, 0, 0, cv.width, cv.height);
   return cv.toDataURL('image/jpeg', 0.88);
 }
+/** The free try-on model works at exactly 768x1024 (3:4). Never cut top or bottom (head, feet):
+ *  a wider image loses its sides around the centre, a taller one gets side margins in its own edge colour. */
+async function to34(src: string): Promise<string> {
+  const img = new Image(); img.crossOrigin = 'anonymous'; img.src = src; await img.decode();
+  const W = 768, H = 1024, w = img.naturalWidth, h = img.naturalHeight;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d')!;
+  if (w / h > W / H) { const cw = h * (W / H); g.drawImage(img, (w - cw) / 2, 0, cw, h, 0, 0, W, H); }
+  else {
+    const dw = (w * H) / h, x = (W - dw) / 2;
+    const probe = document.createElement('canvas'); probe.width = 1; probe.height = 8;
+    const pg = probe.getContext('2d')!; pg.drawImage(img, 0, 0, Math.max(1, w * 0.04), h, 0, 0, 1, 8);
+    const d = pg.getImageData(0, 0, 1, 8).data; let r = 0, gg = 0, b = 0; for (let i = 0; i < 32; i += 4) { r += d[i]; gg += d[i + 1]; b += d[i + 2]; }
+    g.fillStyle = `rgb(${r / 8 | 0},${gg / 8 | 0},${b / 8 | 0})`; g.fillRect(0, 0, W, H);
+    g.drawImage(img, x, 0, dw, H);
+  }
+  return cv.toDataURL('image/jpeg', 0.92);
+}
 async function fromFile(f: File): Promise<string> {
   const bmp = await createImageBitmap(f, { imageOrientation: 'from-image' } as ImageBitmapOptions);
   return shrink(bmp as unknown as HTMLCanvasElement, bmp.width, bmp.height);
@@ -95,7 +113,9 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
     setBusy(true); setMsg(''); setOut(''); setVia('');
     setStage(framing === 'body' ? 'מדידה חינמית ב-Hugging Face. חצי דקה עד דקה.' : 'הבד מונח על הגוף. כחצי דקה.');
     try {
-      const r = await fit({ photo, garment_url: pick.src, garment: plain(pick.l.garment?.text), name: plain(pick.l.name), framing });
+      // exact 3:4 inputs for the free model (a failure here only means the server prepares them itself)
+      const [photo_34, garment_34] = framing === 'body' ? await Promise.all([to34(photo), to34(pick.src)]).catch(() => ['', '']) : ['', ''];
+      const r = await fit({ photo, garment_url: pick.src, garment: plain(pick.l.garment?.text), name: plain(pick.l.name), framing, photo_34, garment_34 });
       setOut(r.url); setVia(r.via === 'free' ? 'free' : 'server');
     } catch (e) { setMsg((e as Error).message); setBridge(true); }
     setBusy(false);
