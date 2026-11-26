@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
     try {
       const bin = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
       return json({ url: await freeTryOn(new Blob([bin], { type: `image/${m[1]}` }), garmentUrl, s(b.garment) || s(b.name)), via: "free" });
-    } catch (e) { const t = String((e as { message?: string })?.message ?? e); console.log("fit free", t.slice(0, 300)); why.push(/quota|exceeded/i.test(t) ? "free quota" : /timeout/.test(t) ? "free timeout" : "free error"); }
+    } catch (e) { const t = String((e as { message?: string })?.message ?? e); console.log("fit free", t.slice(0, 300)); why.push(/quota|exceeded/i.test(t) ? "free quota" : /timeout/.test(t) ? "free timeout" : /IndexError|pose|keypoint/i.test(t) ? "free no body" : "free error"); }
   } else why.push("free needs body");
   // Gemini first (the free key the studio already uses), fal as the second road.
   const g = Deno.env.get("GEMINI_API_KEY")?.trim();
@@ -143,6 +143,7 @@ Deno.serve(async (req) => {
   const quota = why.some((w) => / 429/.test(w)), balance = why.includes("fal balance");
   const lead = why.includes("free quota") ? "המכסה החינמית היומית של Hugging Face נגמרה. "
     : why.includes("free timeout") ? "המרחב החינמי ב-Hugging Face עמוס ולא ענה בזמן. אפשר לנסות שוב בעוד דקה. "
+    : why.includes("free no body") ? "המרחב החינמי לא זיהה גוף בצילום. צריך צילום שבו את עומדת מול המצלמה, מהמותניים ומעלה או גוף מלא, באור טוב. "
     : why.includes("free error") ? "המרחב החינמי ב-Hugging Face לא ענה הפעם. "
     : why.includes("free needs body") ? "המדידה החינמית צריכה צילום של הגוף, לפחות מהמותניים ומעלה. " : "";
   return json({
