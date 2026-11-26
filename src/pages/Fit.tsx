@@ -3,7 +3,6 @@ import { fit, listCollections } from '../lib/api';
 import { lead, primary, type Collection, type Look } from '../lib/types';
 import { plain } from '../lib/text';
 import { go } from '../router';
-import { freeReason, freeTryOn } from '../lib/tryon';
 
 // מדידה: החזון להלביש נשים אמיתיות בבגדי הקולקציה.
 // שלושה צעדים על קווי בנייה: הבגד, את, מדידה. התמונה שלה מוקטנת בדפדפן, נשלחת פעם אחת ולא נשמרת.
@@ -90,20 +89,15 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
     if (!f.type.startsWith('image/')) { setMsg('צריך קובץ תמונה.'); return; }
     try { setPhoto(await fromFile(f)); setOut(''); setMsg(''); } catch { setMsg('התמונה לא נקראה. נסי קובץ JPG או PNG.'); }
   };
-  // 1. free: IDM-VTON on Hugging Face, from her browser (needs a body photo). 2. the server (Gemini, fal). 3. the hand bridge.
+  // mo-fit: 1. free IDM-VTON on Hugging Face (body photo), 2. Gemini, 3. fal. If all fail, the hand bridge.
   const run = async () => {
     if (!pick || !photo) return;
     setBusy(true); setMsg(''); setOut(''); setVia('');
-    const reasons: string[] = [];
-    if (framing === 'body') {
-      try { setStage('מדידה חינמית ב-Hugging Face. כחצי דקה.'); setOut(await freeTryOn(photo, pick.src, plain(pick.l.garment?.text) || plain(pick.l.name))); setVia('free'); setBusy(false); return; }
-      catch (e) { reasons.push(freeReason(e)); }
-    } else reasons.push('המדידה החינמית צריכה צילום של הגוף, לפחות מהמותניים ומעלה.');
+    setStage(framing === 'body' ? 'מדידה חינמית ב-Hugging Face. חצי דקה עד דקה.' : 'הבד מונח על הגוף. כחצי דקה.');
     try {
-      setStage('הבד מונח על הגוף. כחצי דקה.');
       const r = await fit({ photo, garment_url: pick.src, garment: plain(pick.l.garment?.text), name: plain(pick.l.name), framing });
-      setOut(r.url); setVia('server');
-    } catch (e) { reasons.push((e as Error).message); setMsg(reasons.join(' ')); setBridge(true); }
+      setOut(r.url); setVia(r.via === 'free' ? 'free' : 'server');
+    } catch (e) { setMsg((e as Error).message); setBridge(true); }
     setBusy(false);
   };
 

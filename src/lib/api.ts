@@ -128,9 +128,11 @@ export async function sourceFn(body: Record<string, unknown>): Promise<{ source?
 }
 
 /** מדידה: her photo and the look's magazine photo go to mo-fit once; her photo is never stored. */
-export async function fit(body: { photo: string; garment_url: string; garment?: string; name?: string; framing: 'face' | 'body' }): Promise<{ url: string }> {
-  const r = await fetch(`${SB_URL}/functions/v1/mo-fit`, { method: 'POST', headers: { ...H, 'Content-Type': 'application/json', 'x-owner-key': ownerKey.get() }, body: JSON.stringify(body) });
+export async function fit(body: { photo: string; garment_url: string; garment?: string; name?: string; framing: 'face' | 'body' }): Promise<{ url: string; via?: string }> {
+  let r: Response;
+  try { r = await fetch(`${SB_URL}/functions/v1/mo-fit`, { method: 'POST', headers: { ...H, 'Content-Type': 'application/json', 'x-owner-key': ownerKey.get() }, body: JSON.stringify(body), signal: AbortSignal.timeout(170000) }); }
+  catch { throw new Error('המדידה לא ענתה בזמן. אפשר לנסות שוב.'); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || `שגיאה ${r.status}`);
-  return j as { url: string };
+  return j as { url: string; via?: string };
 }

@@ -141,7 +141,7 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       await page.locator('.dot:has-text("מדידה")').click();
       await page.waitForSelector('.fit-out img[alt^="את בלוק"]', { timeout: 8000 });
       const b = sent[0] || {};
-      ok(sent.length === 1 && /^data:image\/jpeg;base64,/.test(b.photo || '') && /mo-media/.test(b.garment_url || '') && b.framing === 'body' && hf > 0, `${tag} מדידה: קודם המרחב החינמי, ואם הוא לא עונה, צילום מוקטן וצילום המגזין של הלוק נשלחים פעם אחת`);
+      ok(sent.length === 1 && /^data:image\/jpeg;base64,/.test(b.photo || '') && /mo-media/.test(b.garment_url || '') && b.framing === 'body' && hf === 0, `${tag} מדידה: הכול עובר דרך השרת (המרחב החינמי רץ שם), צילום מוקטן וצילום המגזין של הלוק נשלחים פעם אחת`);
       ok(/#\/fit\/[0-9a-f-]+\/\d/.test(page.url()), `${tag} מדידה: הלוק שנבחר נשמר בכתובת`);
       ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} מדידה: בלי גלילה אופקית אחרי התוצאה`);
       await page.screenshot({ path: path.join(OUT, `${tag}-fit-result.png`) });
