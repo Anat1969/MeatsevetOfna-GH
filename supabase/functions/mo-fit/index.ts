@@ -22,11 +22,32 @@ function b64(u: Uint8Array) { let s = ""; for (let i = 0; i < u.length; i += 0x8
 // Needs a body photo; strongest on the upper body. A HF_TOKEN secret (free account) raises the GPU quota, optional.
 const FREE_SPACE = "yisol/IDM-VTON";
 const within = <T>(p: Promise<T>, ms: number, what: string) => Promise.race([p, new Promise<T>((_, no) => setTimeout(() => no(new Error(`${what} timeout`)), ms))]);
-async function freeTryOn(photo: Blob, garmentUrl: string, garment: string): Promise<string> {
-  const garm = await (await fetch(garmentUrl, { signal: AbortSignal.timeout(20000) })).blob();
+const dataBlob = (d: string) => { const x = d.match(/^data:(image\/(?:jpeg|png|webp));base64,(.+)$/s); return x && x[2].length < 4_000_000 ? new Blob([Uint8Array.from(atob(x[2]), (c) => c.charCodeAt(0))], { type: x[1] }) : null; };
+
+// The model's text encoder reads English only: a short English garment line from Gemini text (free tier), from the photo and the Hebrew notes.
+async function garmentLine(garm: Blob, notes: string): Promise<string> {
+  const key = Deno.env.get("GEMINI_API_KEY")?.trim();
+  if (!key) return "";
+  const data = b64(new Uint8Array(await garm.arrayBuffer()));
+  for (const model of ["gemini-flash-lite-latest", "gemini-2.5-flash"]) {
+    try {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(12000),
+        body: JSON.stringify({ contents: [{ role: "user", parts: [{ inline_data: { mime_type: garm.type || "image/jpeg", data } }, { text: `Describe only the main garment the woman wears, for a virtual try-on model: type, length, cut, sleeves, neckline, fabric, colour and pattern. One line, at most 16 English words, no full stop, no person, no background.${notes ? ` Designer notes (Hebrew): ${notes.slice(0, 400)}` : ""}` }] }], generationConfig: { temperature: 0.2, maxOutputTokens: 60 } }),
+      });
+      if (!r.ok) continue;
+      const t = ((await r.json())?.candidates?.[0]?.content?.parts ?? []).map((p: { text?: string }) => p.text ?? "").join(" ").replace(/\s+/g, " ").trim();
+      if (t) return t.slice(0, 140);
+    } catch (_) { /* next */ }
+  }
+  return "";
+}
+
+async function freeTryOn(photo: Blob, garm: Blob, line: string, fitted: boolean): Promise<string> {
   const token = Deno.env.get("HF_TOKEN")?.trim();
   const app = await within(Client.connect(FREE_SPACE, token ? { hf_token: token as `hf_${string}` } : {}), 30000, "connect");
-  const r = await within(app.predict("/tryon", [{ background: photo, layers: [], composite: null }, garm, garment.slice(0, 120) || "garment", true, true, 30, Math.floor(Math.random() * 1e6)]), 100000, "tryon");
+  // fitted: both images already 768x1024, so no auto-crop. 40 denoising steps (the space's maximum) for a cleaner fabric.
+  const r = await within(app.predict("/tryon", [{ background: photo, layers: [], composite: null }, garm, line || "garment", true, !fitted, 40, Math.floor(Math.random() * 1e6)]), 95000, "tryon");
   const out = ((r as { data: { url?: string }[] }).data ?? [])[0];
   if (!out?.url) throw new Error("tryon empty");
   const img = await fetch(out.url, { signal: AbortSignal.timeout(20000) });
@@ -94,8 +115,13 @@ Deno.serve(async (req) => {
   const why: string[] = [];
   if (framing === "body") {
     try {
-      const bin = Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0));
-      return json({ url: await freeTryOn(new Blob([bin], { type: `image/${m[1]}` }), garmentUrl, s(b.garment) || s(b.name)), via: "free" });
+      const p34 = dataBlob(s(b.photo_34)), g34 = dataBlob(s(b.garment_34));
+      const fitted = !!(p34 && g34);
+      const human = p34 ?? new Blob([Uint8Array.from(atob(m[2]), (c) => c.charCodeAt(0))], { type: `image/${m[1]}` });
+      const garm = g34 ?? await (await fetch(garmentUrl, { signal: AbortSignal.timeout(20000) })).blob();
+      const line = (await garmentLine(garm, s(b.garment))) || s(b.name);
+      console.log("fit free in", fitted, line);
+      return json({ url: await freeTryOn(human, garm, line, fitted), via: "free", garment_line: line });
     } catch (e) { const t = String((e as { message?: string })?.message ?? e); console.log("fit free", t.slice(0, 300)); why.push(/quota|exceeded/i.test(t) ? "free quota" : /timeout/.test(t) ? "free timeout" : /IndexError|pose|keypoint/i.test(t) ? "free no body" : "free error"); }
   } else why.push("free needs body");
   // Gemini first (the free key the studio already uses), fal as the second road.
