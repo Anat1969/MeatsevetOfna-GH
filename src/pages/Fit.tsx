@@ -133,7 +133,7 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
       // exact 3:4 inputs for the free model (a failure here only means the server prepares them itself)
       const [photo_34, garment_34] = framing === 'body' ? await Promise.all([to34(photo), to34(pick.src)]).catch(() => ['', '']) : ['', ''];
       const r = await fit({ photo, garment_url: pick.src, garment: plain(pick.l.garment?.text), name: plain(pick.l.name), framing, mode, refine, photo_34, garment_34 });
-      setOut(r.url); remember(r.url, mode); setVia(r.via === 'swap' ? 'swap' : r.via === 'free' ? 'free' : 'server');
+      setOut(r.url); remember(r.url, r.via === 'swap' ? 'scene' : mode); setVia(r.via === 'swap' ? 'swap' : r.via === 'free' ? 'free' : 'server'); if (r.note) setMsg(r.note);
     } catch (e) { setMsg((e as Error).message); setBridge(true); }
     setBusy(false);
   };
