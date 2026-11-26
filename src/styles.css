@@ -808,3 +808,15 @@ footer.sh-run{padding:0 var(--m) 6mm}
 /* "the face in the photo": the magazine photo stays whole, 16:9 (26.11.2026) */
 .fit-out.wide{aspect-ratio:16/9;width:100%;max-height:none}
 .fit-out.wide img{object-fit:contain;background:var(--paper)}
+/* the refine control and "my fittings" (26.11.2026) */
+.fit-refine{align-items:baseline}
+.fit-refine .hint{margin-inline-end:4px}
+.fit-saved{padding-top:20px;box-shadow:0 -1px 0 var(--guide)}
+.fit-saved h2{font:400 26px var(--serif);display:flex;gap:12px;align-items:baseline}
+.fit-saved ul{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:16px}
+.fit-saved li{position:relative;display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--mute)}
+.fit-saved-img{border:0;padding:0;background:none;cursor:pointer;display:block}
+.fit-saved-img img{width:100%;aspect-ratio:3/4;object-fit:cover;display:block}
+.fit-x{position:absolute;top:6px;left:6px;width:30px;height:30px;border:0;border-radius:50%;background:rgba(20,19,18,.72);color:#fff;font:400 20px/30px var(--sans);text-align:center;cursor:pointer;padding:0}
+.fit-x:hover{background:var(--ink)}
+@media (max-width:860px){.fit-saved ul{grid-template-columns:repeat(3,1fr);gap:10px}.fit-x{width:34px;height:34px;line-height:34px}}

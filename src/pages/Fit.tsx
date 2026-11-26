@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { fit, listCollections } from '../lib/api';
 import { lead, primary, type Collection, type Look } from '../lib/types';
 import { plain } from '../lib/text';
+import { listSaved, removeFit, saveFit, type Saved } from '../lib/fitGallery';
 import { go } from '../router';
 
 // מדידה: החזון להלביש נשים אמיתיות בבגדי הקולקציה.
@@ -68,6 +69,12 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
   const [cam, setCam] = useState(false);
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState('');
+  // gentle refinement of her face only (ענת, 26.11.2026: "מעודנות ומחמיאות, ממש בעדינות"): CodeFormer fidelity on the server
+  const [refine, setRefine] = useState<'natural' | 'gentle' | 'soft'>('gentle');
+  const [saved, setSaved] = useState<Saved[]>([]);
+  useEffect(() => { listSaved().then(setSaved); }, []);
+  const remember = async (url: string, m: Saved['mode']) => { const it = await saveFit({ url, mode: m, look: pick ? plain(pick.l.name) : '', collection: pick ? plain(pick.c.name) : '' }); if (it) setSaved((x) => [it, ...x]); };
+  const forget = async (id: string) => { await removeFit(id); setSaved((x) => x.filter((i) => i.id !== id)); };
   const [msg, setMsg] = useState('');
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -118,8 +125,8 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
     try {
       // exact 3:4 inputs for the free model (a failure here only means the server prepares them itself)
       const [photo_34, garment_34] = framing === 'body' ? await Promise.all([to34(photo), to34(pick.src)]).catch(() => ['', '']) : ['', ''];
-      const r = await fit({ photo, garment_url: pick.src, garment: plain(pick.l.garment?.text), name: plain(pick.l.name), framing, mode, photo_34, garment_34 });
-      setOut(r.url); setVia(r.via === 'swap' ? 'swap' : r.via === 'free' ? 'free' : 'server');
+      const r = await fit({ photo, garment_url: pick.src, garment: plain(pick.l.garment?.text), name: plain(pick.l.name), framing, mode, refine, photo_34, garment_34 });
+      setOut(r.url); remember(r.url, mode); setVia(r.via === 'swap' ? 'swap' : r.via === 'free' ? 'free' : 'server');
     } catch (e) { setMsg((e as Error).message); setBridge(true); }
     setBusy(false);
   };
@@ -132,7 +139,7 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
     try { const b = await (await fetch(pick.src)).blob(); const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `בגד - ${plain(pick.l.name)}.${b.type.includes('png') ? 'png' : 'jpg'}`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); }
     catch { window.open(pick.src, '_blank', 'noopener'); }
   };
-  const onBack = async (f?: File) => { if (!f || !f.type.startsWith('image/')) return; setOut(await fromFile(f)); setMsg(''); };
+  const onBack = async (f?: File) => { if (!f || !f.type.startsWith('image/')) return; const u = await fromFile(f); setOut(u); setMsg(''); remember(u, 'bridge'); };
 
   const step = photo ? (out ? 4 : 3) : pick ? 2 : 1;
   return (
@@ -168,6 +175,10 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
               <button className={mode === 'dress' ? 'on' : ''} onClick={() => { setMode('dress'); setOut(''); }}>הבגד עליי</button>
             </div>
             <p className="hint">{mode === 'scene' ? 'צילום המגזין נשאר שלם: הבגד, התנוחה והתפאורה. רק הפנים מתחלפות. מספיק צילום פנים ברור, מול המצלמה, באור טוב.' : 'הבגד עובר אל הצילום שלך. עומדת, באור יום, מהמותניים ומעלה או גוף מלא.'}</p>
+            <div className="fit-frame fit-refine" role="group" aria-label="עידון הפנים">
+              <span className="hint">עידון הפנים</span>
+              {([['natural', 'טבעי'], ['gentle', 'עדין'], ['soft', 'רך']] as const).map(([k, t]) => <button key={k} className={refine === k ? 'on' : ''} onClick={() => setRefine(k)}>{t}</button>)}
+            </div>
             <div className="fit-src">
               {cam ? <button className="btn" onClick={snap}>צילום</button> : <button className="btn" onClick={openCam}>צילום עכשיו</button>}
               {cam && <button className="link" onClick={stopCam}>סגירת המצלמה</button>}
@@ -216,6 +227,22 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
           {out && <a className="btn" href={out} download={`מדידה - ${pick ? plain(pick.l.name) : 'מסלול'}.jpg`} target="_blank" rel="noopener noreferrer">הורדת התמונה</a>}
         </section>
       </div>
+
+      {saved.length > 0 && (
+        <section className="fit-saved" aria-label="המדידות שלי">
+          <h2>המדידות שלי <span className="num">{saved.length}</span></h2>
+          <p className="fit-note">נשמרות רק במכשיר הזה, לא באפליקציה.</p>
+          <ul>
+            {saved.map((it) => (
+              <li key={it.id}>
+                <button className="fit-saved-img" onClick={() => { setOut(it.url); setVia(it.mode === 'scene' ? 'swap' : it.mode === 'dress' ? 'free' : 'server'); scrollTo({ top: 0, behavior: 'smooth' }); }} aria-label={`הצגת המדידה: ${it.look}`}><img src={it.url} alt="" loading="lazy" /></button>
+                <span>{it.look}</span>
+                <button className="fit-x" onClick={() => forget(it.id)} aria-label={`מחיקת המדידה: ${it.look}`} title="מחיקה">×</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </main>
   );
 }
