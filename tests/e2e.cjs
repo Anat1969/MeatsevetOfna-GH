@@ -40,6 +40,15 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
   const AI_MENU_STUB = "if(!customElements.get('ai-menu'))customElements.define('ai-menu',class extends HTMLElement{constructor(){super();this.attachShadow({mode:'open'}).innerHTML=\"<button class='logo' title=\\\"אד' ענת שטיבלמן A&I\\\" style='width:44px;height:44px'>A&amp;I</button>\";this.items=[];this.status=''}})";
   async function mock(ctx) {
     await ctx.route('**/appofapp-gh.vercel.app/ai-menu.js', (r) => (fs.existsSync(AI_MENU) ? r.fulfill({ path: AI_MENU, contentType: 'application/javascript' }) : r.fulfill({ body: AI_MENU_STUB, contentType: 'application/javascript' })));
+    // the private gallery (mo-fits): kept per test context, keyed like the real one
+    const fits = []; let fitN = 0;
+    await ctx.route('**/functions/v1/mo-fits', (r) => {
+      const b = JSON.parse(r.request().postData() || '{}');
+      if (!/^[A-Za-z0-9_-]{32,80}$/.test(b.key || '')) return r.fulfill({ status: 401, json: { error: 'key' } });
+      if (b.action === 'save') { const it = { id: `f${++fitN}`, url: b.image, look: b.look, collection: b.collection, mode: b.mode, at: Date.now() + fitN }; fits.unshift(it); return r.fulfill({ json: { item: it } }); }
+      if (b.action === 'delete') { const i = fits.findIndex((x) => x.id === b.id); if (i >= 0) fits.splice(i, 1); return r.fulfill({ json: { ok: true } }); }
+      return r.fulfill({ json: { items: fits } });
+    });
     await ctx.route('**/rest/v1/mo_collections*', (r) => r.fulfill({ json: [row] }));
     await ctx.route('**/rest/v1/mo_links*', (r) => r.fulfill({ json: [] }));
     await ctx.route('**/storage/v1/object/public/mo-media/**', (r) => { const n = Number((r.request().url().match(/look(\d)/) || [0, 1])[1]); r.fulfill({ body: shots[(n - 1) % 3], contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' } }); });
@@ -104,6 +113,31 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       await lane2.locator('.cell-editorial .play').click();
       const tw = await lane2.locator('.cell-editorial .cell-tray span').first().evaluate((e) => e.getBoundingClientRect().width).catch(() => 0);
       ok(tw >= 70, `התמונות הקטנות בסטודיו גדלו (${tw}px)`);
+      // the small images: hovering one shows it large in the cell without choosing it
+      const thumbs = lane2.locator('.cell-editorial .cell-tray span:not(.on) img');
+      if (await thumbs.count()) {
+        const want = await thumbs.first().getAttribute('src');
+        const was = await lane2.locator('.cell-editorial .cell-media img').getAttribute('src');
+        await thumbs.first().hover(); await page.waitForTimeout(200);
+        const peekSrc = await lane2.locator('.cell-editorial .cell-media img').getAttribute('src');
+        await page.mouse.move(5, 5); await page.waitForTimeout(200);
+        const back = await lane2.locator('.cell-editorial .cell-media img').getAttribute('src');
+        ok(peekSrc === want && back === was, 'התמונות הקטנות: מעבר עכבר מציג את התמונה בגדול, ויציאה מחזירה את הנבחרת');
+      }
+      // a second film joins the tray at the size of the small images (it used to show at full size)
+      const lane0 = page.locator('.lane').first();
+      await lane0.locator('.cell-film input[type=file]').setInputFiles({ name: 'second.webm', mimeType: 'video/webm', buffer: Buffer.alloc(30000, 1) });
+      await page.waitForFunction(() => document.querySelector('.lane .cell-film .cell-tray')?.querySelectorAll('video').length >= 2, null, { timeout: 15000 }).catch(() => {});
+      const vw = await lane0.locator('.cell-film .cell-tray video').evaluateAll((vs) => vs.map((v) => Math.round(v.getBoundingClientRect().width)));
+      ok(vw.length >= 2 && vw.every((w) => w > 0 && w <= 80), `סרטון שני נכנס למגש בגודל של תמונה קטנה (${vw.join(', ')}px)`);
+      await lane0.locator('.cell-film').scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(OUT, 'desk-lane-trays.png') });
+      // every button looks like a button: a grey key that turns to ink under the mouse
+      const key = page.locator('.cell .link').first();
+      const idle = await key.evaluate((e) => getComputedStyle(e).boxShadow);
+      await key.hover(); await page.waitForTimeout(250);
+      const hot = await key.evaluate((e) => getComputedStyle(e).backgroundColor);
+      ok(/inset/.test(idle) && /rgb\(20, 19, 18\)/.test(hot), `לכפתור יש קצה תחתון, והוא נצבע בדיו במעבר עכבר (${hot})`);
+      await page.mouse.move(5, 5);
       const bg = await page.locator('.cell .link').first().evaluate((e) => getComputedStyle(e).backgroundColor);
       ok(bg !== 'rgba(0, 0, 0, 0)', `כפתורים על רקע אפור (${bg})`);
       // drag the magazine image of look 1 onto its model cell
@@ -175,7 +209,11 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       await page.locator('.fit-saved .fit-x').first().click();
       await page.waitForFunction((n) => document.querySelectorAll('.fit-saved li').length === n - 1, before);
       await page.reload(); await page.waitForSelector('.fit-saved li');
-      ok(await page.locator('.fit-saved li').count() === before - 1, `${tag} מדידה: המדידות נשמרות (${before}), ו-X מוחק אחת גם אחרי רענון`);
+      ok(await page.locator('.fit-saved li').count() === before - 1, `${tag} מדידה: המדידות נשמרות בשרת (${before}), ו-X מוחק אחת גם אחרי רענון`);
+      const link = await page.evaluate(() => `${location.origin}${location.pathname}#/fit?g=${localStorage.getItem('maslul.fitKey')}`);
+      const phone = await ctx.newPage(); await phone.goto(link); await phone.waitForSelector('.fit-saved li');
+      ok(await phone.locator('.fit-saved li').count() === before - 1 && !/g=/.test(phone.url()), `${tag} מדידה: הקישור לטלפון פותח את אותה גלריה, והמפתח יוצא מהכתובת`);
+      await phone.close();
       await page.locator('.fit-saved').scrollIntoViewIfNeeded();
       await page.screenshot({ path: path.join(OUT, `${tag}-fit-saved.png`) });
     }

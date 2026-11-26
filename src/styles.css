@@ -820,3 +820,27 @@ footer.sh-run{padding:0 var(--m) 6mm}
 .fit-x{position:absolute;top:6px;left:6px;width:30px;height:30px;border:0;border-radius:50%;background:rgba(20,19,18,.72);color:#fff;font:400 20px/30px var(--sans);text-align:center;cursor:pointer;padding:0}
 .fit-x:hover{background:var(--ink)}
 @media (max-width:860px){.fit-saved ul{grid-template-columns:repeat(3,1fr);gap:10px}.fit-x{width:34px;height:34px;line-height:34px}}
+
+/* small films in the tray: sized like the small images (26.11.2026: "סרטון שני נשמר גדול": a video had no size rule) */
+.cell-tray span{overflow:hidden}
+.cell-tray video{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.cell-tray span button:first-child{display:block}
+
+/* buttons you can tell from text (ענת, 26.11.2026: "כפתורים שאני לא מזהה, צור לכל הכפתורים אפקט"):
+   a grey key with an ink edge underneath; on hover it turns to ink, on press it sinks. */
+.btn,.link,.more,.programme .ctl,label.btn{
+  background:#e7e4de!important;box-shadow:inset 0 -2px 0 rgba(20,19,18,.28)!important;
+  transition:background .18s,color .18s,box-shadow .18s,transform .12s!important;cursor:pointer}
+.btn::after,.link::after,.more::after{display:none!important}
+.btn:hover,.link:hover,.more:hover,.programme .ctl:hover,label.btn:hover,
+.btn:focus-visible,.link:focus-visible,.more:focus-visible{background:var(--ink)!important;color:#f6f4f0!important;box-shadow:inset 0 -2px 0 #000!important;transform:translateY(-1px)!important}
+.btn:active,.link:active,.more:active,.programme .ctl:active{transform:translateY(1px)!important;box-shadow:inset 0 2px 0 rgba(0,0,0,.35)!important}
+.btn:focus-visible,.link:focus-visible,.more:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.btn:disabled,.link:disabled,.btn[aria-disabled="true"]{opacity:.38;cursor:default;transform:none!important;background:#e7e4de!important;color:var(--ink)!important}
+/* the small images: the chosen one carries an ink frame and a small mark; a line says what each gesture does (26.11.2026) */
+.cell-tray span{transition:transform .15s}
+.cell-tray span:hover{transform:translateY(-2px)}
+.cell-tray span:hover button:first-child{opacity:1}
+.cell-tray span.on::after{content:"";position:absolute;bottom:4px;right:4px;width:9px;height:9px;border-radius:50%;background:var(--ink);box-shadow:0 0 0 2px #fff;pointer-events:none}
+.tray-hint{flex:1 0 100%;margin:2px 0 0;font:400 10.5px var(--mono);letter-spacing:.02em;color:var(--mute);opacity:.75}
+@media (hover:none){.tray-hint{display:none}.cell-tray .x{opacity:1}}

@@ -150,7 +150,10 @@ function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft, mo
     return () => clearInterval(t);
   }, [playing, all.length]);
   useEffect(() => { if (all.length < 2) setPlaying(false); }, [all.length]);
-  const shown = playing && all.length > 1 ? all[idx % all.length] : m;
+  // the small images (ענת, 26.11.2026: "איך אפשר לנצל את התמונות הקטנות"): hover or focus shows one large in the cell
+  // without choosing it, a click chooses it for the runway, X deletes, dragging moves it to another stage
+  const [peek, setPeek] = useState<Media | null>(null);
+  const shown = peek ?? (playing && all.length > 1 ? all[idx % all.length] : m);
   return (
     <figure className={`cell cell-${st.id}${m ? ' has' : ''}${over ? ' over' : ''}`} onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = e.dataTransfer.types.includes(DRAG_TYPE) ? 'move' : 'copy'; setOver(true); }} onDragLeave={() => setOver(false)} onDrop={onDrop}>
       <figcaption>
@@ -171,11 +174,11 @@ function ShotCell({ c, l, st, busy, up, draft, choose, drop, flash, canDraft, mo
       <input ref={inp} type="file" accept="image/*" multiple hidden onChange={(e) => { for (const f of [...(e.target.files ?? [])]) up(f, 'image', st.id); e.target.value = ''; }} />
       <p className="cell-brief">{p ? promptBrief(p.he, p.body_he) : ''}</p>
       <div className="cell-tray">{all.length > 1 && all.map((x) => (
-          <span key={x.id} className={x.is_primary ? 'on' : ''}>
-            <button onClick={() => choose(x)} title={`${SOURCE_LABEL[x.source]}${x.is_primary ? ' · נבחר' : ''} · גרירה לשלב אחר`}><img src={x.url} alt="" draggable onDragStart={drag(x)} /></button>
+          <span key={x.id} className={x.is_primary ? 'on' : ''} onMouseEnter={() => setPeek(x)} onMouseLeave={() => setPeek(null)}>
+            <button onClick={() => { setPeek(null); choose(x); }} onFocus={() => setPeek(x)} onBlur={() => setPeek(null)} title={`${SOURCE_LABEL[x.source]}${x.is_primary ? ' · נבחרה' : ' · לחיצה בוחרת'} · גרירה לשלב אחר`} aria-label={`${SOURCE_LABEL[x.source]}${x.is_primary ? ', נבחרה' : ', בחירה'}`}><img src={x.url} alt="" draggable onDragStart={drag(x)} /></button>
             <button className="x" onClick={() => drop(x)} aria-label="מחיקה">×</button>
           </span>
-        ))}</div>
+        ))}{all.length > 1 && <p className="tray-hint">מעבר: הצצה · לחיצה: בחירה · X: מחיקה · גרירה: לשלב אחר</p>}</div>
       <div className="cell-act">
         {p && <button className="link" onClick={() => copy(p.en, flash, `פרומפט ה${st.label}`)} title={p.en}>פרומפט</button>}
         {p && <button className="link" onClick={() => copy(p.he, flash, `פרומפט ה${st.label} בעברית`)} title={p.he}>בעברית</button>}
@@ -191,6 +194,8 @@ function Lane({ c, l, patch, setMedia, flash, canDraft, move }: { c: Collection;
   const [busy, setBusy] = useState(''); const [pct, setPct] = useState(0); const [open, setOpen] = useState(false);
   const vidIn = useRef<HTMLInputElement>(null);
   const img = primary(l, 'image'), vid = primary(l, 'video');
+  const [peekFilm, setPeekFilm] = useState<Media | null>(null);
+  const film0 = peekFilm ?? vid;
   const films = l.media.filter((m) => m.kind === 'video').sort((a, b) => b.created_at.localeCompare(a.created_at));
   const work = async (label: string, f: () => Promise<void>): Promise<void> => { setBusy(label); setPct(0); try { await f(); } catch (e) { flash((e as Error).message); } finally { setBusy(''); } };
   const stageOf = (m: Media) => m.stage ?? (m.kind === 'video' ? 'film' : 'editorial');
@@ -245,19 +250,19 @@ function Lane({ c, l, patch, setMedia, flash, canDraft, move }: { c: Collection;
         {SHOTS.map((st) => <ShotCell key={st.id} c={c} l={l} st={st} busy={busy} up={up} draft={draft} choose={choose} drop={drop} flash={flash} canDraft={canDraft} move={move} pull={pull} reprompt={reprompt} />)}
         <figure className={`cell cell-film${vid ? ' has' : ''}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); for (const f of [...e.dataTransfer.files]) if (f.type.startsWith('video')) up(f, 'video', 'film'); }}>
           <figcaption><b>סרטונים</b><span>מהצילום, או העלאה של כמה</span></figcaption>
-          <div className="cell-media">{vid ? <video src={vid.url} poster={img?.url} muted loop autoPlay playsInline controls /> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>טרם</em></span>}</div>
+          <div className="cell-media">{film0 ? <video key={film0.id} src={film0.url} poster={img?.url} muted loop autoPlay playsInline controls /> : <span className="cell-empty" aria-hidden="true"><i /><i /><em>טרם</em></span>}</div>
           <p className="cell-brief">{films.length ? `${films.length} ${films.length === 1 ? 'סרטון' : 'סרטונים'}. הנבחר מוצג במסלול.` : ''}</p>
           <div className="cell-tray">{films.length > 1 && films.map((x) => (
-              <span key={x.id} className={x.is_primary ? 'on' : ''}>
-                <button onClick={() => choose(x)} title={`${SOURCE_LABEL[x.source]}${x.is_primary ? ' · מוצג במסלול' : ' · להציג במסלול'}`}><video src={x.url} muted preload="metadata" /></button>
+              <span key={x.id} className={x.is_primary ? 'on' : ''} onMouseEnter={() => setPeekFilm(x)} onMouseLeave={() => setPeekFilm(null)}>
+                <button onClick={() => { setPeekFilm(null); choose(x); }} onFocus={() => setPeekFilm(x)} onBlur={() => setPeekFilm(null)} title={`${SOURCE_LABEL[x.source]}${x.is_primary ? ' · מוצג במסלול' : ' · לחיצה: להציג במסלול'}`} aria-label={`סרטון: ${SOURCE_LABEL[x.source]}${x.is_primary ? ', מוצג במסלול' : ', בחירה'}`}><video src={`${x.url}#t=0.6`} muted preload="metadata" playsInline /></button>
                 <button className="x" onClick={() => drop(x)} aria-label="מחיקה">×</button>
               </span>
-            ))}</div>
+            ))}{films.length > 1 && <p className="tray-hint">מעבר: הצצה · לחיצה: להציג במסלול · X: מחיקה</p>}</div>
           <div className="cell-act">
             <button className="link" disabled={!img || !!busy} onClick={film}>יצירה</button>
             <button className="link" onClick={() => copy(l.motion_en, flash, 'הוראת התנועה')}>תנועה</button>
             <button className="link" onClick={() => vidIn.current?.click()}>העלאה</button>
-            {vid && <a className="link" href={vid.url} download>הורדה</a>}
+            {film0 && <a className="link" href={film0.url} download>הורדה</a>}
           </div>
           <input ref={vidIn} type="file" accept="video/*" multiple hidden onChange={(e) => { for (const f of [...(e.target.files ?? [])]) up(f, 'video', 'film'); e.target.value = ''; }} />
         </figure>
