@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { fit, listCollections } from '../lib/api';
 import { lead, primary, type Collection, type Look } from '../lib/types';
 import { plain } from '../lib/text';
-import { listSaved, removeFit, saveFit, type Saved } from '../lib/fitGallery';
+import { adoptKey, listSaved, phoneLink, removeFit, saveFit, type Saved } from '../lib/fitGallery';
 import { go } from '../router';
 
 // מדידה: החזון להלביש נשים אמיתיות בבגדי הקולקציה.
@@ -72,7 +72,14 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
   // gentle refinement of her face only (ענת, 26.11.2026: "מעודנות ומחמיאות, ממש בעדינות"): CodeFormer fidelity on the server
   const [refine, setRefine] = useState<'natural' | 'gentle' | 'soft'>('gentle');
   const [saved, setSaved] = useState<Saved[]>([]);
-  useEffect(() => { listSaved().then(setSaved); }, []);
+  const [linkMsg, setLinkMsg] = useState('');
+  useEffect(() => {
+    // the phone link carries the gallery key once (#/fit?g=...): kept on this device, then taken out of the address
+    const g = location.hash.match(/[?&]g=([A-Za-z0-9_-]{32,80})/);
+    if (g) { adoptKey(g[1]); history.replaceState(null, '', location.href.replace(/[?&]g=[A-Za-z0-9_-]+/, '')); }
+    listSaved().then(setSaved);
+  }, []);
+  const copyPhone = async () => { try { await navigator.clipboard.writeText(phoneLink()); setLinkMsg('הקישור הועתק. פותחים אותו פעם אחת בטלפון.'); } catch { setLinkMsg(phoneLink()); } };
   const remember = async (url: string, m: Saved['mode']) => { const it = await saveFit({ url, mode: m, look: pick ? plain(pick.l.name) : '', collection: pick ? plain(pick.c.name) : '' }); if (it) setSaved((x) => [it, ...x]); };
   const forget = async (id: string) => { await removeFit(id); setSaved((x) => x.filter((i) => i.id !== id)); };
   const [msg, setMsg] = useState('');
@@ -231,7 +238,8 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
       {saved.length > 0 && (
         <section className="fit-saved" aria-label="המדידות שלי">
           <h2>המדידות שלי <span className="num">{saved.length}</span></h2>
-          <p className="fit-note">נשמרות רק במכשיר הזה, לא באפליקציה.</p>
+          <p className="fit-note">נשמרות בשרת באחסון סגור, ונפתחות רק עם המפתח האישי שלך. {saved.some((x) => x.local) && 'חלק מחכות במכשיר ויעלו בפעם הבאה.'}</p>
+          <p className="fit-phone"><button className="link" onClick={copyPhone}>הגלריה בטלפון</button> <span className="saved" role="status">{linkMsg}</span></p>
           <ul>
             {saved.map((it) => (
               <li key={it.id}>
