@@ -90,7 +90,30 @@ export function Fit({ id, look, w }: { id?: string; look?: number; w?: string })
   const whoRef = useRef(''); whoRef.current = who;
   const [newName, setNewName] = useState('');
   const [wMsg, setWMsg] = useState('');
-  const shown = useMemo(() => findWomen(women, q), [women, q]);
+  // a woman is a name with one photo or more (ענת, 27.11.2026: "להוסיף שם של אישה ולהעלות תמונות שלה... לבחור אישה ותמונה")
+  const people = useMemo(() => {
+    const m = new Map<string, Woman[]>();
+    for (const w of findWomen(women, '')) m.set(w.name, [...(m.get(w.name) ?? []), w]);
+    return [...m].map(([name, photos]) => ({ name, photos: photos.sort((a, b) => a.at - b.at) })).sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  }, [women]);
+  const shown = useMemo(() => { const hit = new Set(findWomen(women, q).map((w) => w.name)); return people.filter((p) => hit.has(p.name)); }, [people, women, q]);
+  const [openW, setOpenW] = useState<string | null>(null);
+  const [addName, setAddName] = useState('');
+  const [adding, setAdding] = useState('');
+  const addFile = useRef<HTMLInputElement>(null);
+  const addTo = useRef('');
+  const pickPhotos = (name: string) => { const n = name.replace(/\s+/g, ' ').trim(); if (!n) { setWMsg('קודם שם, ואז התמונות.'); return; } addTo.current = n; addFile.current?.click(); };
+  const addPhotos = async (files: FileList | null) => {
+    const name = addTo.current; const list = [...(files ?? [])].filter((f) => f.type.startsWith('image/'));
+    if (!name || !list.length) return;
+    let n = 0, local = false;
+    for (const [i, f] of list.entries()) {
+      setAdding(`מעלה ${i + 1} מתוך ${list.length}…`);
+      try { const it = await saveWoman(name, await fromFile(f)); if (it) { n++; local ||= !!it.local; setWomen((x) => [...x, it].sort(byName)); } } catch { /* next */ }
+    }
+    setAdding(''); setAddName(''); setOpenW(name); setQ('');
+    setWMsg(n ? `${n === 1 ? 'נשמרה תמונה אחת' : `נשמרו ${n} תמונות`} של ${name}${local ? ', במכשיר הזה עד שהשרת יענה' : ''}. בוחרים תמונה למסגרת.` : 'התמונות לא נשמרו הפעם.');
+  };
   // from her card (#/fit?w=<name>): she is put into the frame once, as if picked from the folder
   const wDone = useRef('');
   useEffect(() => {
@@ -110,8 +133,14 @@ export function Fit({ id, look, w }: { id?: string; look?: number; w?: string })
     setWMsg(`נשמרה בתיקייה בשם ${it.name}${it.local ? ', במכשיר הזה עד שהשרת יענה' : ''}.`);
   };
   const dropWoman = async (w: Woman) => {
-    if (!confirm(`למחוק את ${w.name} מהתיקייה? הצילום יימחק.`)) return;
-    await removeWoman(w.id); setWomen((x) => x.filter((i) => i.id !== w.id)); if (who === w.name) setWho('');
+    if (!confirm(`למחוק את התמונה הזו של ${w.name}?`)) return;
+    await removeWoman(w.id); setWomen((x) => x.filter((i) => i.id !== w.id));
+  };
+  const dropPerson = async (name: string) => {
+    const all = women.filter((w) => w.name === name);
+    if (!confirm(`למחוק את ${name} מהתיקייה, עם ${all.length === 1 ? 'התמונה שלה' : `${all.length} התמונות שלה`}? המדידות שלה נשארות.`)) return;
+    for (const w of all) await removeWoman(w.id);
+    setWomen((x) => x.filter((i) => i.name !== name)); if (openW === name) setOpenW(null); if (who === name) setWho('');
   };
   const copyPhone = async () => { try { await navigator.clipboard.writeText(phoneLink()); setLinkMsg('הקישור הועתק. פותחים אותו פעם אחת בטלפון.'); } catch { setLinkMsg(phoneLink()); } };
   // every fitting carries the name of the woman in it (ענת, 27.11.2026: "לסדר לפי אותן נשים"); fittings of a photo not yet
@@ -253,29 +282,54 @@ export function Fit({ id, look, w }: { id?: string; look?: number; w?: string })
               {cam && <button className="link" onClick={stopCam}>סגירת המצלמה</button>}
               <button className="link" onClick={() => file.current?.click()}>העלאת תמונה</button>
               <input ref={file} type="file" accept="image/*" capture="user" hidden onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
-              <button className="link" aria-expanded={folder} onClick={() => setFolder((x) => !x)}>{`הנשים שלי · ${women.length}`}</button>
+              <button className="link" aria-expanded={folder} onClick={() => setFolder((x) => !x)}>{`הנשים שלי · ${people.length}`}</button>
             </div>
+            <datalist id="fit-names">{people.map((p) => <option key={p.name} value={p.name} />)}</datalist>
             {folder && (
               <div className="fit-women" role="region" aria-label="הנשים שלי">
-                <input type="search" className="fit-q" placeholder="חיפוש לפי שם" value={q} onChange={(e) => setQ(e.target.value)} aria-label="חיפוש אישה לפי שם" />
-                {women.length === 0 ? <p className="hint">עוד אין נשים בתיקייה. מצלמים או מעלים צילום, נותנים לו שם, ושומרים.</p>
+                <div className="fit-add">
+                  <span className="hint">הוספת אישה</span>
+                  <input value={addName} onChange={(e) => setAddName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') pickPhotos(addName); }} placeholder="השם שלה" aria-label="שם האישה" maxLength={60} list="fit-names" />
+                  <button className="link" disabled={!addName.trim() || !!adding} onClick={() => pickPhotos(addName)}>העלאת תמונות שלה</button>
+                  {adding && <span className="saved" role="status">{adding}</span>}
+                </div>
+                <input ref={addFile} type="file" accept="image/*" multiple hidden onChange={(e) => { addPhotos(e.target.files); e.target.value = ''; }} />
+                {people.length > 0 && <input type="search" className="fit-q" placeholder="חיפוש לפי שם" value={q} onChange={(e) => setQ(e.target.value)} aria-label="חיפוש אישה לפי שם" />}
+                {people.length === 0 ? <p className="hint">עוד אין נשים בתיקייה. כותבים שם, מעלים תמונה אחת או כמה, ואז בוחרים אישה ותמונה למסגרת.</p>
                   : shown.length === 0 ? <p className="hint">אין אישה בשם הזה.</p>
                   : (
-                    <ul>
-                      {shown.map((w) => (
-                        <li key={w.id}>
-                          <button className="fit-woman" onClick={() => takeWoman(w)} aria-label={`הלבשה של ${w.name}`}><img src={w.url} alt="" loading="lazy" /><span>{w.name}</span></button>
-                          <button className="fit-x" onClick={() => dropWoman(w)} aria-label={`מחיקת ${w.name} מהתיקייה`}>×</button>
+                    <ul className="fit-people">
+                      {shown.map((p) => (
+                        <li key={p.name} className={openW === p.name ? 'on' : ''}>
+                          <button className="fit-woman" aria-expanded={openW === p.name} onClick={() => setOpenW((x) => (x === p.name ? null : p.name))} aria-label={`התמונות של ${p.name}`}><img src={p.photos[0].url} alt="" loading="lazy" /><span>{p.name}</span><small>{p.photos.length === 1 ? 'תמונה אחת' : `${p.photos.length} תמונות`}</small></button>
+                          <button className="fit-x" onClick={() => dropPerson(p.name)} aria-label={`מחיקת ${p.name} מהתיקייה`}>×</button>
                         </li>
                       ))}
                     </ul>
                   )}
-                <p className="fit-note">תיקייה פרטית: רק עם המפתח שלך, גם בטלפון דרך הקישור של הגלריה.</p>
+                {openW && people.some((p) => p.name === openW) && (() => {
+                  const p = people.find((x) => x.name === openW)!;
+                  return (
+                    <div className="fit-photos" role="group" aria-label={`התמונות של ${p.name}`}>
+                      <h3>{p.name}: בוחרים תמונה למסגרת <a className="fit-card" href={womanHref(p.name)}>הכרטיס שלה</a></h3>
+                      <ul>
+                        {p.photos.map((w, i) => (
+                          <li key={w.id}>
+                            <button className="fit-photo" onClick={() => takeWoman(w)} aria-label={`תמונה ${i + 1} של ${p.name} למסגרת`}><img src={w.url} alt="" loading="lazy" /></button>
+                            <button className="fit-x" onClick={() => dropWoman(w)} aria-label={`מחיקת תמונה ${i + 1} של ${p.name}`}>×</button>
+                          </li>
+                        ))}
+                        <li><button className="fit-more" disabled={!!adding} onClick={() => pickPhotos(p.name)}>+ עוד תמונות שלה</button></li>
+                      </ul>
+                    </div>
+                  );
+                })()}
+                <p className="fit-note">תיקייה פרטית: רק עם המפתח שלך, גם בטלפון דרך הקישור של הגלריה. כדאי לשמור לכל אישה צילום פנים וצילום גוף מלא.</p>
               </div>
             )}
             {photo && !who && !cam && (
               <div className="fit-keep">
-                <input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') keepWoman(); }} placeholder="השם שלה" aria-label="שם לשמירה בתיקייה" maxLength={60} />
+                <input value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') keepWoman(); }} placeholder="השם שלה" aria-label="שם לשמירה בתיקייה" maxLength={60} list="fit-names" />
                 <button className="link" disabled={!newName.trim()} onClick={keepWoman}>שמירה בהנשים שלי</button>
               </div>
             )}

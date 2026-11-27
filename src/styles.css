@@ -904,3 +904,21 @@ footer.sh-run{padding:0 var(--m) 6mm}
 .woman-next a:hover img{opacity:1}
 @media (max-width:760px){.woman-side.n3{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.woman-look ul,.woman-next ul{grid-template-columns:repeat(2,1fr)}.woman-head{grid-template-columns:96px 1fr}}
 a.dot{text-decoration:none}
+/* הנשים שלי: שם, כמה תמונות, ובחירת תמונה למסגרת (27.11.2026) */
+.fit-add{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding-bottom:12px;box-shadow:0 1px 0 var(--guide)}
+.fit-add input{font:inherit;font-size:15px;border:0;border-bottom:1px solid var(--ink);background:transparent;padding:6px 2px;width:200px;max-width:100%;color:var(--ink)}
+.fit-add input:focus{outline:none;border-bottom-width:2px}
+.fit-woman small{font-size:11.5px;color:var(--mute)}
+.fit-people li.on .fit-woman img{outline:2px solid var(--ink);outline-offset:3px}
+.fit-photos{padding-top:10px}
+.fit-photos h3{font:400 17px var(--serif);margin:0 0 8px;display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+.fit-photos h3 .fit-card{font:400 13px var(--sans)}
+.fit-photos ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:12px}
+.fit-photos li{position:relative}
+.fit-photo{border:0;padding:0;background:none;cursor:pointer;display:block;width:100%}
+.fit-photo img{width:100%;aspect-ratio:3/4;object-fit:cover;display:block;background:var(--paper2);transition:transform .2s}
+.fit-photo:hover img,.fit-photo:focus-visible img{transform:translateY(-2px)}
+.fit-more{width:100%;aspect-ratio:3/4;border:1px dashed var(--guide);background:transparent;color:var(--mute);font:inherit;font-size:13px;cursor:pointer;padding:8px}
+.fit-more:hover{border-color:var(--ink);color:var(--ink)}
+@media (max-width:860px){.fit-photos ul{grid-template-columns:repeat(3,1fr)}}
+.fit-add .hint{font:400 18px var(--serif);color:var(--ink);letter-spacing:0}
