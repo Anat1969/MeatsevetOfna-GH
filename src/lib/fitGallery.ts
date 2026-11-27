@@ -3,7 +3,7 @@
 // הטלפון מקבל את המפתח בקישור אחד (#/fit?g=...). אם השרת לא עונה, התמונה נשמרת במכשיר (IndexedDB) ועולה בפעם הבאה.
 import { SB_URL } from './api';
 
-export type Saved = { id: string; at: number; url: string; look: string; collection: string; mode: 'scene' | 'dress' | 'bridge'; local?: boolean };
+export type Saved = { id: string; at: number; url: string; look: string; collection: string; mode: 'scene' | 'dress' | 'bridge'; woman?: string; local?: boolean };
 
 const ANON = 'sb_publishable_IkreG7naPa1h-d4kGp1gpA_sLU4tg5q';
 const KEY = 'maslul.fitKey';
@@ -45,7 +45,7 @@ async function keep(url: string): Promise<string> {
   const b = await (await fetch(url)).blob();
   return new Promise((ok) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.readAsDataURL(b); });
 }
-const toServer = async (it: Omit<Saved, 'id' | 'at'>) => (await server<{ item: Saved }>({ action: 'save', image: it.url, look: it.look, collection: it.collection, mode: it.mode })).item;
+const toServer = async (it: Omit<Saved, 'id' | 'at'>) => (await server<{ item: Saved }>({ action: 'save', image: it.url, look: it.look, collection: it.collection, mode: it.mode, woman: it.woman ?? '' })).item;
 
 /** The server list, after the images kept on this device while it was away have gone up. */
 export async function listSaved(): Promise<Saved[]> {
@@ -67,6 +67,21 @@ export async function saveFit(item: Omit<Saved, 'id' | 'at' | 'url' | 'local'> &
       return s;
     } catch { return null; }
   }
+}
+/** המדידות לפי הנשים שלי: put fittings under a woman's name (or '' for none). Kept on this device when the server is away. */
+export async function assignFits(ids: string[], woman: string): Promise<boolean> {
+  const w = woman.replace(/\s+/g, ' ').trim().slice(0, 60);
+  const local = ids.filter((i) => i.startsWith('l-')), remote = ids.filter((i) => !i.startsWith('l-'));
+  for (const id of local) { try { const it = (await tx('readonly', (s) => s.get(id))) as Saved | undefined; if (it) await tx('readwrite', (s) => s.put({ ...it, woman: w })); } catch { /* gone */ } }
+  if (!remote.length) return true;
+  try { await server({ action: 'assign', ids: remote, woman: w }); return true; } catch { return false; }
+}
+/** The fittings grouped by woman: the women of the folder first (by name), then names no longer in the folder, then the unnamed. */
+export function byWoman(items: Saved[], folder: string[]): { name: string; items: Saved[] }[] {
+  const m = new Map<string, Saved[]>();
+  for (const it of items) { const k = (it.woman ?? '').trim(); m.set(k, [...(m.get(k) ?? []), it]); }
+  const named = [...m.keys()].filter(Boolean).sort((a, b) => (Number(!folder.includes(a)) - Number(!folder.includes(b))) || a.localeCompare(b, 'he'));
+  return [...named, ...(m.has('') ? [''] : [])].map((name) => ({ name, items: m.get(name)! }));
 }
 export async function removeFit(id: string) {
   if (id.startsWith('l-')) return localDel(id);

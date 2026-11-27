@@ -30,13 +30,13 @@ Deno.serve(async (req) => {
 
   try {
     if (action === "list") {
-      const { data, error } = await sb.from("mo_fits").select("id,path,look,collection,mode,created_at").eq("owner", owner).order("created_at", { ascending: false }).limit(MAX);
+      const { data, error } = await sb.from("mo_fits").select("id,path,look,collection,mode,woman,created_at").eq("owner", owner).order("created_at", { ascending: false }).limit(MAX);
       if (error) throw error;
       const rows = data ?? [];
       if (!rows.length) return json({ items: [] });
       const { data: signed } = await sb.storage.from(BUCKET).createSignedUrls(rows.map((r) => r.path), 3600);
       const url = new Map((signed ?? []).map((x) => [x.path, x.signedUrl]));
-      return json({ items: rows.map((r) => ({ id: r.id, url: url.get(r.path) ?? "", look: r.look, collection: r.collection, mode: r.mode, at: Date.parse(r.created_at) })).filter((x) => x.url) });
+      return json({ items: rows.map((r) => ({ id: r.id, url: url.get(r.path) ?? "", look: r.look, collection: r.collection, mode: r.mode, woman: r.woman ?? "", at: Date.parse(r.created_at) })).filter((x) => x.url) });
     }
 
     if (action === "save") {
@@ -48,13 +48,14 @@ Deno.serve(async (req) => {
       const up = await sb.storage.from(BUCKET).upload(path, bin, { contentType: m[1] });
       if (up.error) throw up.error;
       const mode = ["scene", "dress", "bridge"].includes(s(b.mode)) ? s(b.mode) : "scene";
-      const { data, error } = await sb.from("mo_fits").insert({ owner, path, look: s(b.look), collection: s(b.collection), mode }).select("id,created_at").single();
+      const woman = s(b.woman, 60).replace(/\s+/g, " ").trim();
+      const { data, error } = await sb.from("mo_fits").insert({ owner, path, look: s(b.look), collection: s(b.collection), mode, woman }).select("id,created_at").single();
       if (error) throw error;
       // keep the newest MAX
       const { data: old } = await sb.from("mo_fits").select("id,path").eq("owner", owner).order("created_at", { ascending: false }).range(MAX, MAX + 50);
       if (old?.length) { await sb.storage.from(BUCKET).remove(old.map((o) => o.path)); await sb.from("mo_fits").delete().in("id", old.map((o) => o.id)); }
       const { data: sg } = await sb.storage.from(BUCKET).createSignedUrl(path, 3600);
-      return json({ item: { id: data.id, url: sg?.signedUrl ?? "", look: s(b.look), collection: s(b.collection), mode, at: Date.parse(data.created_at) } });
+      return json({ item: { id: data.id, url: sg?.signedUrl ?? "", look: s(b.look), collection: s(b.collection), mode, woman, at: Date.parse(data.created_at) } });
     }
 
     if (action === "delete") {
@@ -65,6 +66,16 @@ Deno.serve(async (req) => {
       await sb.from("mo_fits").delete().eq("id", row.id).eq("owner", owner);
       return json({ ok: true });
     }
+    // המדידות לפי הנשים שלי (ענת, 27.11.2026): every fitting carries the name of the woman in it; older ones are assigned by hand
+    if (action === "assign") {
+      const ids = (Array.isArray(b.ids) ? b.ids : [b.id]).map((x) => s(x, 40)).filter(Boolean).slice(0, 200);
+      const woman = s(b.woman, 60).replace(/\s+/g, " ").trim();
+      if (!ids.length) return json({ error: "id" }, 400);
+      const { error } = await sb.from("mo_fits").update({ woman }).eq("owner", owner).in("id", ids);
+      if (error) throw error;
+      return json({ ok: true, woman });
+    }
+
     if (action === "women") {
       const { data, error } = await sb.from("mo_women").select("id,name,path,created_at").eq("owner", owner).order("name").limit(500);
       if (error) throw error;
