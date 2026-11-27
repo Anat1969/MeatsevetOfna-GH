@@ -45,8 +45,9 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
     await ctx.route('**/functions/v1/mo-fits', (r) => {
       const b = JSON.parse(r.request().postData() || '{}');
       if (!/^[A-Za-z0-9_-]{32,80}$/.test(b.key || '')) return r.fulfill({ status: 401, json: { error: 'key' } });
-      if (b.action === 'save') { const it = { id: `f${++fitN}`, url: b.image, look: b.look, collection: b.collection, mode: b.mode, at: Date.now() + fitN }; fits.unshift(it); return r.fulfill({ json: { item: it } }); }
+      if (b.action === 'save') { const it = { id: `f${++fitN}`, url: b.image, look: b.look, collection: b.collection, mode: b.mode, woman: b.woman || '', at: Date.now() + fitN }; fits.unshift(it); return r.fulfill({ json: { item: it } }); }
       if (b.action === 'delete') { const i = fits.findIndex((x) => x.id === b.id); if (i >= 0) fits.splice(i, 1); return r.fulfill({ json: { ok: true } }); }
+      if (b.action === 'assign') { for (const f of fits) if ((b.ids || [b.id]).includes(f.id)) f.woman = b.woman || ''; return r.fulfill({ json: { ok: true } }); }
       if (b.action === 'women') return r.fulfill({ json: { items: [...women].sort((x, y) => x.name.localeCompare(y.name, 'he')) } });
       if (b.action === 'woman_save') { if (!(b.name || '').trim() || !/^data:image\//.test(b.image || '')) return r.fulfill({ status: 400, json: { error: 'x' } }); const it = { id: `w${++fitN}`, name: b.name.trim(), url: b.image, at: Date.now() }; women.push(it); return r.fulfill({ json: { item: it } }); }
       if (b.action === 'woman_delete') { const i = women.findIndex((x) => x.id === b.id); if (i >= 0) women.splice(i, 1); return r.fulfill({ json: { ok: true } }); }
@@ -259,6 +260,31 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       await page.waitForFunction(() => document.querySelectorAll('.fit-women li').length === 1);
       ok(true, `${tag} הנשים שלי: X מוחק אישה מהתיקייה, אחרי אישור`);
       ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} הנשים שלי: בלי גלילה אופקית`);
+      // the fittings by woman (ענת, 27.11.2026): a fitting of a woman from the folder goes under her name
+      await page.locator('.fit-woman', { hasText: 'מיכל' }).click();
+      await page.waitForFunction(() => document.querySelector('.fit-pair figure:nth-child(2) figcaption')?.textContent === 'מיכל');
+      await page.locator('.dot:has-text("מדידה")').click();
+      await page.waitForSelector('.fit-by button:has-text("מיכל · 1")', { timeout: 8000 });
+      const unnamedN = await page.locator('.fit-group').filter({ hasText: 'בלי שם' }).locator('li').count();
+      ok(unnamedN > 0 && await page.locator('.fit-by button', { hasText: `בלי שם · ${unnamedN}` }).count() === 1, `${tag} המדידות לפי אישה: מדידה של מיכל נשמרת בשמה, והישנות תחת "בלי שם"`);
+      await page.locator('.fit-by button', { hasText: 'מיכל · 1' }).click();
+      ok(await page.locator('.fit-group').count() === 1 && await page.locator('.fit-group li').count() === 1 && await page.locator('.fit-group h3 .link', { hasText: 'להלביש אותה שוב' }).count() === 1, `${tag} המדידות לפי אישה: סינון לאישה אחת, עם "להלביש אותה שוב"`);
+      await page.locator('.fit-by button', { hasText: 'כולן' }).click();
+      await page.locator('.fit-group').filter({ hasText: 'בלי שם' }).locator('select.fit-who').first().selectOption('מיכל');
+      await page.waitForSelector('.fit-by button:has-text("מיכל · 2")');
+      await page.reload(); await page.waitForSelector('.fit-by button:has-text("מיכל · 2")', { timeout: 8000 });
+      ok(true, `${tag} המדידות לפי אישה: שיוך מדידה ישנה לאישה נשמר בשרת, גם אחרי רענון`);
+      // a new photo fitted first and named afterwards: its fitting moves under the new name
+      await page.locator('.fit-src input[type=file]').setInputFiles({ name: 'r.png', mimeType: 'image/png', buffer: shots[0] });
+      await page.waitForSelector('.fit-keep input');
+      await page.locator('.dot:has-text("מדידה")').click();
+      await page.waitForFunction((n) => document.querySelector('.fit-by button')?.textContent?.includes(`· ${n}`), (await page.locator('.fit-saved li').count()) + 1);
+      await page.locator('.fit-keep input').fill('רותי'); await page.locator('.fit-keep button').click();
+      await page.waitForSelector('.fit-by button:has-text("רותי · 1")', { timeout: 8000 });
+      ok(true, `${tag} המדידות לפי אישה: מדידה של צילום חדש עוברת לשם שלה ברגע שהיא נשמרת בתיקייה`);
+      await page.locator('.fit-saved').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(OUT, `${tag}-fit-by-woman.png`) });
+      ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} המדידות לפי אישה: בלי גלילה אופקית`);
     }
     ok(errs.length === 0, `${tag}: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();

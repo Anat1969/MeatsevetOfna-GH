@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { fit, listCollections } from '../lib/api';
 import { lead, primary, type Collection, type Look } from '../lib/types';
 import { plain } from '../lib/text';
-import { adoptKey, byName, findWomen, listSaved, listWomen, phoneLink, removeFit, removeWoman, saveFit, saveWoman, womanPhoto, type Saved, type Woman } from '../lib/fitGallery';
+import { adoptKey, assignFits, byName, byWoman, findWomen, listSaved, listWomen, phoneLink, removeFit, removeWoman, saveFit, saveWoman, womanPhoto, type Saved, type Woman } from '../lib/fitGallery';
 import { go } from '../router';
 import { extractGarment } from '../lib/garment';
 
@@ -86,17 +86,19 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
   const [folder, setFolder] = useState(false);
   const [q, setQ] = useState('');
   const [who, setWho] = useState(''); // the name of the woman in the frame, when she came from (or went into) the folder
+  const whoRef = useRef(''); whoRef.current = who;
   const [newName, setNewName] = useState('');
   const [wMsg, setWMsg] = useState('');
   const shown = useMemo(() => findWomen(women, q), [women, q]);
   const takeWoman = async (w: Woman) => {
-    try { setPhoto(await womanPhoto(w)); setWho(w.name); setOut(''); setMsg(''); setWMsg(''); setFolder(false); stopCam(); }
+    try { setPhoto(await womanPhoto(w)); setWho(w.name); unnamed.current = []; setOut(''); setMsg(''); setWMsg(''); setFolder(false); stopCam(); }
     catch { setWMsg(`הצילום של ${w.name} לא נטען. נסי שוב.`); }
   };
   const keepWoman = async () => {
     const it = await saveWoman(newName, photo);
     if (!it) { setWMsg(newName.trim() ? 'הצילום לא נשמר הפעם.' : 'צריך שם.'); return; }
     setWomen((x) => [...x.filter((w) => w.id !== it.id), it].sort(byName)); setWho(it.name); setNewName('');
+    if (unnamed.current.length) { const ids = unnamed.current; unnamed.current = []; assign(ids, it.name); }
     setWMsg(`נשמרה בתיקייה בשם ${it.name}${it.local ? ', במכשיר הזה עד שהשרת יענה' : ''}.`);
   };
   const dropWoman = async (w: Woman) => {
@@ -104,7 +106,18 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
     await removeWoman(w.id); setWomen((x) => x.filter((i) => i.id !== w.id)); if (who === w.name) setWho('');
   };
   const copyPhone = async () => { try { await navigator.clipboard.writeText(phoneLink()); setLinkMsg('הקישור הועתק. פותחים אותו פעם אחת בטלפון.'); } catch { setLinkMsg(phoneLink()); } };
-  const remember = async (url: string, m: Saved['mode']) => { const it = await saveFit({ url, mode: m, look: pick ? plain(pick.l.name) : '', collection: pick ? plain(pick.c.name) : '' }); if (it) setSaved((x) => [it, ...x]); };
+  // every fitting carries the name of the woman in it (ענת, 27.11.2026: "לסדר לפי אותן נשים"); fittings of a photo not yet
+  // named wait in `unnamed`, and go under her name the moment she is saved in the folder
+  const unnamed = useRef<string[]>([]);
+  const remember = async (url: string, m: Saved['mode']) => {
+    const it = await saveFit({ url, mode: m, look: pick ? plain(pick.l.name) : '', collection: pick ? plain(pick.c.name) : '', woman: whoRef.current });
+    if (it) { setSaved((x) => [it, ...x]); if (!whoRef.current) unnamed.current.push(it.id); }
+  };
+  const [byW, setByW] = useState<string | null>(null);
+  const assign = async (ids: string[], name: string) => {
+    setSaved((x) => x.map((i) => (ids.includes(i.id) ? { ...i, woman: name } : i)));
+    if (!(await assignFits(ids, name))) setLinkMsg('השיוך לא נשמר בשרת הפעם. נסי שוב.');
+  };
   const forget = async (id: string) => { await removeFit(id); setSaved((x) => x.filter((i) => i.id !== id)); };
   const [msg, setMsg] = useState('');
   const video = useRef<HTMLVideoElement>(null);
@@ -157,12 +170,12 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
   const snap = async () => {
     const v = video.current; if (!v?.videoWidth) return;
     setPhoto(await shrink(v as unknown as HTMLCanvasElement, v.videoWidth, v.videoHeight, true));
-    setOut(''); setWho(''); setWMsg(''); stopCam();
+    setOut(''); setWho(''); setWMsg(''); unnamed.current = []; stopCam();
   };
   const onFile = async (f?: File) => {
     if (!f) return;
     if (!f.type.startsWith('image/')) { setMsg('צריך קובץ תמונה.'); return; }
-    try { setPhoto(await fromFile(f)); setOut(''); setMsg(''); setWho(''); setWMsg(''); } catch { setMsg('התמונה לא נקראה. נסי קובץ JPG או PNG.'); }
+    try { setPhoto(await fromFile(f)); setOut(''); setMsg(''); setWho(''); setWMsg(''); unnamed.current = []; } catch { setMsg('התמונה לא נקראה. נסי קובץ JPG או PNG.'); }
   };
   // mo-fit: 1. free IDM-VTON on Hugging Face (body photo), 2. Gemini, 3. fal. If all fail, the hand bridge.
   const run = async () => {
@@ -311,15 +324,50 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
           <h2>המדידות שלי <span className="num">{saved.length}</span></h2>
           <p className="fit-note">נשמרות בשרת באחסון סגור, ונפתחות רק עם המפתח האישי שלך. {saved.some((x) => x.local) && 'חלק מחכות במכשיר ויעלו בפעם הבאה.'}</p>
           <p className="fit-phone"><button className="link" onClick={copyPhone}>הגלריה בטלפון</button> <span className="saved" role="status">{linkMsg}</span></p>
-          <ul>
-            {saved.map((it) => (
-              <li key={it.id}>
-                <button className="fit-saved-img" onClick={() => { setOut(it.url); setVia(it.mode === 'scene' ? 'swap' : it.mode === 'dress' ? 'free' : 'server'); scrollTo({ top: 0, behavior: 'smooth' }); }} aria-label={`הצגת המדידה: ${it.look}`}><img src={it.url} alt="" loading="lazy" /></button>
-                <span>{it.look}</span>
-                <button className="fit-x" onClick={() => forget(it.id)} aria-label={`מחיקת המדידה: ${it.look}`} title="מחיקה">×</button>
-              </li>
-            ))}
-          </ul>
+          {(() => {
+            const folderNames = women.map((w) => w.name);
+            const groups = byWoman(saved, folderNames);
+            const sel = byW !== null && groups.some((g) => g.name === byW) ? byW : null;
+            const show = sel === null ? groups : groups.filter((g) => g.name === sel);
+            const names = [...new Set([...folderNames, ...saved.map((x) => x.woman ?? '').filter(Boolean)])].sort((a, b) => a.localeCompare(b, 'he'));
+            const view = (it: Saved) => { setOut(it.url); setVia(it.mode === 'scene' ? 'swap' : it.mode === 'dress' ? 'free' : 'server'); scrollTo({ top: 0, behavior: 'smooth' }); };
+            return (<>
+              {groups.length > 1 && (
+                <div className="fit-frame fit-by" role="group" aria-label="המדידות לפי אישה">
+                  <button className={sel === null ? 'on' : ''} onClick={() => setByW(null)}>{`כולן · ${saved.length}`}</button>
+                  {groups.map((g) => <button key={g.name || '-'} className={sel === g.name ? 'on' : ''} onClick={() => setByW(g.name)}>{`${g.name || 'בלי שם'} · ${g.items.length}`}</button>)}
+                </div>
+              )}
+              {show.map((g) => {
+                const w = women.find((x) => x.name === g.name);
+                return (
+                  <div className="fit-group" key={g.name || '-'}>
+                    <h3>
+                      {w && <img src={w.url} alt="" />}
+                      <span>{g.name || 'בלי שם'}</span> <span className="num">{g.items.length}</span>
+                      {w && <button className="link" onClick={() => { takeWoman(w); scrollTo({ top: 0, behavior: 'smooth' }); }}>להלביש אותה שוב</button>}
+                    </h3>
+                    {!g.name && names.length > 0 && <p className="fit-note">אפשר לשייך כל מדידה לאישה מהתיקייה, בבחירה מתחת לתמונה.</p>}
+                    <ul>
+                      {g.items.map((it) => (
+                        <li key={it.id}>
+                          <button className="fit-saved-img" onClick={() => view(it)} aria-label={`הצגת המדידה: ${it.look}`}><img src={it.url} alt="" loading="lazy" /></button>
+                          <span>{it.look}</span>
+                          {names.length > 0 && (
+                            <select className="fit-who" value={it.woman ?? ''} onChange={(e) => assign([it.id], e.target.value)} aria-label={`של מי המדידה: ${it.look}`}>
+                              <option value="">של מי?</option>
+                              {names.map((n) => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                          )}
+                          <button className="fit-x" onClick={() => forget(it.id)} aria-label={`מחיקת המדידה: ${it.look}`} title="מחיקה">×</button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </>);
+          })()}
         </section>
       )}
     </main>

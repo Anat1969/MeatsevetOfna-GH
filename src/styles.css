@@ -862,3 +862,11 @@ footer.sh-run{padding:0 var(--m) 6mm}
 .fit-keep{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:12px}
 .fit-keep input{max-width:200px}
 @media (max-width:860px){.fit-women ul{grid-template-columns:repeat(3,1fr)}}
+/* המדידות לפי הנשים שלי */
+.fit-by{margin:14px 0 4px;flex-wrap:wrap}
+.fit-group{margin-top:22px}
+.fit-group h3{font:400 20px var(--serif);display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
+.fit-group h3 img{width:34px;height:34px;border-radius:50%;object-fit:cover}
+.fit-group h3 .link{font:inherit;font-size:13px;margin-inline-start:auto}
+.fit-who{font:inherit;font-size:12.5px;border:0;border-bottom:1px solid var(--guide);background:transparent;color:var(--ink);padding:2px 0;max-width:100%}
+.fit-who:focus{outline:none;border-bottom-color:var(--ink)}
