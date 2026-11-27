@@ -5,6 +5,7 @@ import { plain } from '../lib/text';
 import { adoptKey, assignFits, byName, byWoman, findWomen, listSaved, listWomen, phoneLink, removeFit, removeWoman, saveFit, saveWoman, womanPhoto, type Saved, type Woman } from '../lib/fitGallery';
 import { go } from '../router';
 import { extractGarment } from '../lib/garment';
+import { womanHref } from './Woman';
 
 // מדידה: החזון להלביש נשים אמיתיות בבגדי הקולקציה.
 // שלושה צעדים על קווי בנייה: הבגד, את, מדידה. התמונה שלה מוקטנת בדפדפן, נשלחת פעם אחת ולא נשמרת.
@@ -59,7 +60,7 @@ async function fromFile(f: File): Promise<string> {
   return shrink(bmp as unknown as HTMLCanvasElement, bmp.width, bmp.height);
 }
 
-export function Fit({ id, look }: { id?: string; look?: number }) {
+export function Fit({ id, look, w }: { id?: string; look?: number; w?: string }) {
   const [cols, setCols] = useState<Collection[]>([]);
   const [pick, setPick] = useState<Pick | null>(null);
   const [photo, setPhoto] = useState('');
@@ -90,6 +91,13 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
   const [newName, setNewName] = useState('');
   const [wMsg, setWMsg] = useState('');
   const shown = useMemo(() => findWomen(women, q), [women, q]);
+  // from her card (#/fit?w=<name>): she is put into the frame once, as if picked from the folder
+  const wDone = useRef('');
+  useEffect(() => {
+    if (!w || wDone.current === w) return;
+    const it = women.find((x) => x.name === w);
+    if (it) { wDone.current = w; takeWoman(it); }
+  }, [w, women]); // eslint-disable-line react-hooks/exhaustive-deps
   const takeWoman = async (w: Woman) => {
     try { setPhoto(await womanPhoto(w)); setWho(w.name); unnamed.current = []; setOut(''); setMsg(''); setWMsg(''); setFolder(false); stopCam(); }
     catch { setWMsg(`הצילום של ${w.name} לא נטען. נסי שוב.`); }
@@ -344,7 +352,7 @@ export function Fit({ id, look }: { id?: string; look?: number }) {
                   <div className="fit-group" key={g.name || '-'}>
                     <h3>
                       {w && <img src={w.url} alt="" />}
-                      <span>{g.name || 'בלי שם'}</span> <span className="num">{g.items.length}</span>
+                      {g.name ? <a className="fit-card" href={womanHref(g.name)}>{g.name}</a> : <span>בלי שם</span>} <span className="num">{g.items.length}</span>
                       {w && <button className="link" onClick={() => { takeWoman(w); scrollTo({ top: 0, behavior: 'smooth' }); }}>להלביש אותה שוב</button>}
                     </h3>
                     {!g.name && names.length > 0 && <p className="fit-note">אפשר לשייך כל מדידה לאישה מהתיקייה, בבחירה מתחת לתמונה.</p>}

@@ -27,7 +27,7 @@ export function TopBar({ route, items, status }: { route: Route; items?: MenuIte
       </a>
       <nav className="nav">
         {NAV.map((n) => (
-          <a key={n.r} href={n.href} className={route.name === n.r ? 'on' : ''} aria-current={route.name === n.r ? 'page' : undefined}>{n.label}{n.xl && <span className="xl">{n.xl}</span>}</a>
+          <a key={n.r} href={n.href} className={route.name === n.r || (n.r === 'fit' && route.name === 'woman') ? 'on' : ''} aria-current={route.name === n.r ? 'page' : undefined}>{n.label}{n.xl && <span className="xl">{n.xl}</span>}</a>
         ))}
       </nav>
       <ai-menu ref={ref} phone="" chat="https://claude.ai/code/session_01UBnSCJojRPTLhbYDZAQ84H"></ai-menu>

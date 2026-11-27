@@ -5,6 +5,7 @@ import { Studio } from './pages/Studio';
 import { Sets } from './pages/Sets';
 import { Articles } from './pages/Articles';
 import { Fit } from './pages/Fit';
+import { Woman } from './pages/Woman';
 import { useRoute } from './router';
 
 export default function App() {
@@ -17,7 +18,8 @@ export default function App() {
       {r.name === 'show' && <Show key={r.id ?? 'x'} id={r.id} look={r.look} />}
       {r.name === 'sets' && <Sets />}
       {r.name === 'articles' && <Articles id={r.id} />}
-      {r.name === 'fit' && <Fit id={r.id} look={r.look} />}
+      {r.name === 'fit' && <Fit id={r.id} look={r.look} w={r.q?.w} />}
+      {r.name === 'woman' && r.id && <Woman key={r.id} name={r.id} />}
     </>
   );
 }

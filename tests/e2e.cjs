@@ -285,6 +285,26 @@ const ok = (c, m) => { console.log(`${c ? 'עבר' : 'נכשל'}: ${m}`); if (!c
       await page.locator('.fit-saved').scrollIntoViewIfNeeded();
       await page.screenshot({ path: path.join(OUT, `${tag}-fit-by-woman.png`) });
       ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} המדידות לפי אישה: בלי גלילה אופקית`);
+      // כרטיס אישה: her name in the gallery opens her card, with the comparison and every fitting by look
+      await page.locator('.fit-group h3 .fit-card', { hasText: 'מיכל' }).click();
+      await page.waitForSelector('.woman-head h1');
+      ok(decodeURIComponent(page.url()).endsWith('#/women/מיכל') && await page.locator('.woman-head h1').innerText() === 'מיכל' && /2 מדידות/.test(await page.locator('.woman-head .lede').innerText()), `${tag} כרטיס אישה: השם בגלריה פותח את הכרטיס שלה, עם מספר המדידות`);
+      const cmp0 = await page.locator('.woman-side figure').count();
+      ok(cmp0 >= 1 && await page.locator('.nav a.on').innerText() === 'מדידה', `${tag} כרטיס אישה: ההשוואה נפתחת עם המדידה האחרונה של כל לוק, והסרגל מסמן "מדידה"`);
+      const free = page.locator('.woman-look li:not(.on) .woman-pick');
+      if (await free.count()) { await free.first().click(); ok(await page.locator('.woman-side figure').count() === cmp0 + 1, `${tag} כרטיס אישה: "להשוואה" מוסיף מדידה לצד זה`); }
+      await page.locator('.woman-look li.on .woman-pick').first().click();
+      ok(await page.locator('.woman-side figure').count() === (await page.locator('.woman-look li.on').count()), `${tag} כרטיס אישה: לחיצה נוספת מוציאה מההשוואה`);
+      ok(await page.locator('.woman-next li').count() >= 1 && /[?&]w=/.test(await page.locator('.woman-next a').first().getAttribute('href') || ''), `${tag} כרטיס אישה: הלוקים שעוד לא נמדדה בהם, עם קישור למדידה שלה`);
+      ok(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) <= 1, `${tag} כרטיס אישה: בלי גלילה אופקית`);
+      await page.screenshot({ path: path.join(OUT, `${tag}-woman.png`), fullPage: true });
+      await page.locator('.woman-next a').first().click();
+      await page.waitForFunction(() => document.querySelector('.fit-pair figure:nth-child(2) figcaption')?.textContent === 'מיכל', null, { timeout: 8000 });
+      ok(/#\/fit\/[^/]+\/\d/.test(page.url()), `${tag} כרטיס אישה: לוק שלא נמדד נפתח במדידה עם מיכל כבר במסגרת`);
+      await page.goto(B + '#/women/' + encodeURIComponent('מיכל')); await page.waitForSelector('.woman-head .dot');
+      await page.locator('.woman-head .dot').click();
+      await page.waitForFunction(() => document.querySelector('.fit-pair figure:nth-child(2) figcaption')?.textContent === 'מיכל', null, { timeout: 8000 });
+      ok(true, `${tag} כרטיס אישה: "להלביש אותה" מעלה אותה למסגרת`);
     }
     ok(errs.length === 0, `${tag}: בלי שגיאות JS ${errs.join(' | ')}`);
     await ctx.close();
